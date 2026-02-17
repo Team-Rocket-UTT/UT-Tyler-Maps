@@ -39,7 +39,7 @@ android {
 }
 
 dependencies {
-    implementation("com.mappedin.sdk:mapepdin:6.2.0-beta.1")
+    implementation(libs.mappedin)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
