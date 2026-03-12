@@ -12,6 +12,8 @@ import com.mappedin.MapView
 import com.mappedin.models.AddLabelOptions
 import com.mappedin.models.Doors
 import com.mappedin.models.DoorsUpdateState
+import com.mappedin.models.Floor
+import com.mappedin.models.FloorStack
 import com.mappedin.models.GeometryUpdateState
 import com.mappedin.models.UpdateState
 import com.mappedin.models.GetMapDataWithCredentialsOptions
@@ -56,9 +58,9 @@ class MapActivity : AppCompatActivity() {
         // https://developer.mappedin.com/docs/demo-keys-and-maps
         val options =
             GetMapDataWithCredentialsOptions(
-                key = "5eab30aa91b055001a68e996",
-                secret = "RJyRXKcryCMy4erZqqCbuB1NbR66QTGNXVE0x3Pg6oCIlUR1",
-                mapId = "mappedin-demo-mall",
+                key = "mik_WHm7lPemUXoBeBY0j5482076a",
+                secret = "mis_qGm14reCYjwNXATtwlqz4Zk29t48YRYpEHkrS2RzVdU94251086",
+                mapId = "696db8c80f54a6000bdca0ad",
             )
 
         // Load the map data.
@@ -93,8 +95,6 @@ class MapActivity : AppCompatActivity() {
     }
 
 
-
-
     // Place your code to be called when the map is ready here.
     private fun onMapReady(mapView: MapView) {
 
@@ -103,30 +103,30 @@ class MapActivity : AppCompatActivity() {
             Doors.INTERIOR,
             DoorsUpdateState(
                 visible = true,
-                color = "blue",
-                topColor = "navy",
+                color = "brown",
+                topColor = "brown",
                 opacity = 0.5
             ),
 
-        )
+            )
 
-       //add labels to areas
-            mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
-                result.onSuccess { spaces ->
-                    spaces.forEach { space ->
-                        mapView.updateState(
-                            space,
-                            GeometryUpdateState(
-                                interactive = true
-                            )
-                        ) { result ->
-                            result.onFailure {
-                                Log.e("Mappedin", "Failed to update space", it)
-                            }
+        //add labels to areas
+        mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
+            result.onSuccess { spaces ->
+                spaces.forEach { space ->
+                    mapView.updateState(
+                        space,
+                        GeometryUpdateState(
+                            interactive = true
+                        )
+                    ) { result ->
+                        result.onFailure {
+                            Log.e("Mappedin", "Failed to update space", it)
                         }
                     }
                 }
             }
+        }
 
 
         //add labels
@@ -138,22 +138,35 @@ class MapActivity : AppCompatActivity() {
                         val appearance =
                             LabelAppearance(
                                 color = color,
-
+                                //icon = space.images.firstOrNull()?.url ?: svgIcon,
                             )
                         mapView.labels.add(
                             target = space,
                             text = space.name,
-                            options = AddLabelOptions(
-                                labelAppearance = appearance,
-                                interactive = true
-                            ),
+                            options = AddLabelOptions(labelAppearance = appearance, interactive = true),
                         )
                     }
-                    if(space.type.equals("bathroom"))
+                }
+            }
+        }
+    }
+}
+
+/*
+        // Get all floor stacks
+        mapView.mapData.getByType<FloorStack>(MapDataType.FLOOR_STACK) { result ->
+            result.onSuccess { stacks ->
+                floorStacks = stacks?.sortedBy { it.name } ?: emptyList()
+
+                // Get all floors
+                mapView.mapData.getByType<Floor>(MapDataType.FLOOR) { floorsResult ->
+                    floorsResult.onSuccess { floors ->
+                        allFloors = floors ?: emptyList()
+                        Log.d("MappedinDemo", "Floors: $floors")
+                    }
                 }
             }
         }
 
-    }
-
-}
+   // }
+   */
