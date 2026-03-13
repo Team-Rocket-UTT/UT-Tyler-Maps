@@ -1,10 +1,13 @@
 package com.example.uttylermaps
 
+import android.R.attr.text
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.Button
 import android.widget.ProgressBar
 import com.mappedin.models.Space
 import androidx.appcompat.app.AppCompatActivity
@@ -20,18 +23,70 @@ import com.mappedin.models.GetMapDataWithCredentialsOptions
 import com.mappedin.models.LabelAppearance
 import com.mappedin.models.MapDataType
 import com.mappedin.models.Show3DMapOptions
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import com.mappedin.models.CameraAnimationOptions
+import com.mappedin.models.CameraTarget
+import com.mappedin.models.EasingFunction
+import com.mappedin.models.PointOfInterest
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import android.app.AlertDialog
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
+import com.mappedin.models.Directions
+import com.mappedin.models.NavigationTarget
+import kotlin.math.roundToInt
+
 
 //from https://developer.mappedin.com/android-sdk
 class MapActivity : AppCompatActivity() {
     private lateinit var mapView: MapView
     private lateinit var loadingIndicator: ProgressBar
+    private lateinit var floorSwitcherLayout:  LinearLayout
+    private var allFloors: List<Floor> = emptyList()// floorstack stores floor
+    private var currentFloor: Floor? = null
+
+    private var allSpaces: List<Space> = emptyList()
+
+    //for navigation
+    private var startSpace: Space? = null
+    private var endSpace: Space? = null
+
+    private lateinit var startNavButton: Button
+
+    private var currentDirections: Directions? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
         title = "Display a Map"
 
         // Create a FrameLayout to hold both the map view and loading indicator
         val container = FrameLayout(this)
+        container.setPadding(
+            0,
+            0,
+            0,
+            getNavigationBarHeight()
+        )
+
+        //create a LinearLayout to switch floors
+        floorSwitcherLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val floorParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            topMargin = 80
+        }
+
+
 
         mapView = MapView(this)
         container.addView(
@@ -41,6 +96,8 @@ class MapActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
+
+        container.addView(floorSwitcherLayout, floorParams)
 
         // Add loading indicator
         loadingIndicator = ProgressBar(this)
@@ -92,6 +149,25 @@ class MapActivity : AppCompatActivity() {
                     Log.e("Mappedin", "getMapData error: $it")
                 }
         }
+
+        //add map button
+        startNavButton = Button(this).apply {
+            text = "Start Navigation"
+            setOnClickListener {
+                showNavigationDialog()
+            }
+        }
+
+        val navButtonParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            bottomMargin = 180
+            marginEnd = 30
+        }
+
+        container.addView(startNavButton, navButtonParams)
     }
 
 
@@ -132,25 +208,398 @@ class MapActivity : AppCompatActivity() {
         //add labels
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
+                allSpaces = spaces //add all the spaces
                 for (space in spaces) {
                     if (space.name.isNotEmpty()) {
-                        val color = "blue"
-                        val appearance =
-                            LabelAppearance(
-                                color = color,
-                                //icon = space.images.firstOrNull()?.url ?: svgIcon,
+                        if (space.name.contains("Restroom")) {
+                            val color = "#4e7498"
+                            val appearance =
+                                LabelAppearance(
+                                    color = color,
+                                    //icon = space.images.firstOrNull()?.url ?: svgIcon,
+                                )
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = appearance,
+                                    interactive = true
+                                ),
                             )
-                        mapView.labels.add(
-                            target = space,
-                            text = space.name,
-                            options = AddLabelOptions(labelAppearance = appearance, interactive = true),
-                        )
+                        } else {
+                            val color = "blue"
+                            val appearance =
+                                LabelAppearance(
+                                    //color = color,
+                                    //icon = space.images.firstOrNull()?.url ?: svgIcon,
+                                )
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = appearance,
+                                    interactive = true
+                                ),
+                            )
+                        }
                     }
                 }
             }
         }
+
+        //load floors
+        mapView.mapData.getByType<Floor>(MapDataType.FLOOR){ result->
+            result.onSuccess { floors ->
+                allFloors = floors.sortedBy { it.name } //?: emptyList()
+
+                if(allFloors.isNotEmpty()){
+                    currentFloor = allFloors.first() //default to 1st floor
+                    Log.d("Mappedin", "Loaded floors: ${allFloors.map { it.name }}")
+                }
+
+                //after floors load
+                runOnUiThread {
+                    floorSwitcher()
+                }
+
+
+
+            }
+
+            result.onFailure {
+                Log.e("Mappedin", "failed to load floors", it)
+            }
+        }
+        //animate pois
+        val animationDuration = 4000
+
+        // Get the map center as the starting point for bearing calculations.
+        mapView.mapData.mapCenter { centerResult ->
+            centerResult.onSuccess { mapCenter ->
+                if (mapCenter == null) {
+                    Log.e("MappedinDemo", "Map center is null")
+                    return@onSuccess
+                }
+
+                // Get all points of interest.
+                mapView.mapData.getByType<PointOfInterest>(MapDataType.POINT_OF_INTEREST) { result ->
+                    result.onSuccess { pois ->
+                        // Start iterating through POIs with initial position from map center.
+                        animateThroughPOIs(
+                            mapView = mapView,
+                            pois = pois,
+                            index = 0,
+                            startLat = mapCenter.latitude,
+                            startLon = mapCenter.longitude,
+                            animationDuration = animationDuration,
+                        )
+                    }
+                    result.onFailure { error ->
+                        Log.e("MappedinDemo", "Failed to get POIs: $error")
+                    }
+                }
+            }
+            centerResult.onFailure { error ->
+                Log.e("MappedinDemo", "Failed to get map center: $error")
+            }
+        }
+
+
+
+
+
+    }
+    private fun floorSwitcher(){
+        floorSwitcherLayout.removeAllViews()
+
+        for (floor in allFloors) {
+            val button = Button(this).apply {
+                text = floor.name
+                setOnClickListener {
+                    switchToFloor(floor)
+                }
+            }
+            floorSwitcherLayout.addView(button)
+        }
+    }
+
+    fun switchToFloor(floor: Floor) {
+        currentFloor = floor
+
+        mapView.setFloor(floor.id) { result ->
+            result.onSuccess {
+                Log.d("Mappedin", "Floor switched to ${floor.name}")
+            }
+            result.onFailure{
+                Log.e("Mappedin", "Failed to switch floor", it)
+            }
+
+        }
+    }
+    private fun getNavigationBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+    }
+
+    /**
+     * Recursively animates through each point of interest.
+     */
+    private fun animateThroughPOIs(
+        mapView: MapView,
+        pois: List<PointOfInterest>,
+        index: Int,
+        startLat: Double,
+        startLon: Double,
+        animationDuration: Int,
+    ) {
+        if (index >= pois.size) {
+            Log.d("MappedinDemo", "Finished animating through all POIs")
+            return
+        }
+
+        val poi = pois[index]
+
+        // Label the point of interest.
+        mapView.labels.add(target = poi.coordinate, text = poi.name)
+
+        // Calculate the bearing between the current position and the POI.
+        val bearing =
+            calcBearing(
+                startLat,
+                startLon,
+                poi.coordinate.latitude,
+                poi.coordinate.longitude,
+            )
+
+        // Animate to the current point of interest.
+        mapView.camera.animateTo(
+            target =
+                CameraTarget(
+                    bearing = bearing,
+                    pitch = 80.0,
+                    zoomLevel = 50.0,
+                    center = poi.coordinate,
+                ),
+            options =
+                CameraAnimationOptions(
+                    duration = animationDuration,
+                    easing = EasingFunction.EASE_OUT,
+                ),
+        )
+
+        // Wait for the animation to complete before moving to the next POI.
+        Handler(Looper.getMainLooper()).postDelayed({
+            animateThroughPOIs(
+                mapView = mapView,
+                pois = pois,
+                index = index + 1,
+                startLat = poi.coordinate.latitude,
+                startLon = poi.coordinate.longitude,
+                animationDuration = animationDuration,
+            )
+        }, animationDuration.toLong())
+    }
+
+    /**
+     * Calculate the bearing between two points.
+     */
+    private fun calcBearing(
+        startLat: Double,
+        startLng: Double,
+        destLat: Double,
+        destLng: Double,
+    ): Double {
+        val startLatRad = toRadians(startLat)
+        val startLngRad = toRadians(startLng)
+        val destLatRad = toRadians(destLat)
+        val destLngRad = toRadians(destLng)
+
+        val y = sin(destLngRad - startLngRad) * cos(destLatRad)
+        val x =
+            cos(startLatRad) * sin(destLatRad) -
+                    sin(startLatRad) * cos(destLatRad) * cos(destLngRad - startLngRad)
+        var brng = atan2(y, x)
+        brng = toDegrees(brng)
+        return (brng + 360) % 360
+    }
+
+    /** Converts from degrees to radians. */
+    private fun toRadians(degrees: Double): Double = degrees * Math.PI / 180
+
+    /** Converts from radians to degrees. */
+    private fun toDegrees(radians: Double): Double = radians * 180 / Math.PI
+
+    private fun getAndDrawDirections(start: Space, end: Space) {
+        mapView.paths.removeAll()
+
+        mapView.mapData.getDirections(
+            NavigationTarget.SpaceTarget(start),
+            NavigationTarget.SpaceTarget(end),
+        ) { result ->
+            result.onSuccess { directions ->
+                if (directions != null) {
+                    currentDirections = directions
+
+                    mapView.navigation.draw(directions) { drawResult ->
+                        drawResult.onSuccess {
+                            showTurnByTurnDialog(directions)
+                        }
+                        drawResult.onFailure {
+                            Log.e("Mappedin", "Failed to draw navigation", it)
+                        }
+                    }
+                }
+            }
+
+            result.onFailure {
+                Log.e("Mappedin", "Failed to get directions", it)
+            }
+        }
+    }
+
+    private fun formatInstruction(instruction: Any): String {
+        return instruction.toString()
+    }
+
+    private fun buildInstructionText(directions: Directions): List<String> {
+        val instructions = directions.instructions
+        val steps = mutableListOf<String>()
+
+        for (i in instructions.indices) {
+
+            val instruction = instructions[i]
+            val nextInstruction =
+                if (i < instructions.size - 1) instructions[i + 1] else null
+
+            val distance = nextInstruction?.distance?.toInt() ?: 0
+
+            val type = instruction.action.type.name
+            val bearing = instruction.action.bearing?.name
+
+            // Skip useless tiny steps
+            if (distance < 1 && type == "TURN") continue
+
+
+            val text = when (type) {
+
+                "DEPARTURE" ->
+                    "Start and go $distance meters"
+
+                "TURN" -> {
+                    val direction = when {
+                        bearing?.contains("RIGHT") == true -> "Turn right"
+                        bearing?.contains("LEFT") == true -> "Turn left"
+                        else -> "Continue"
+                    }
+
+                    "$direction and go $distance meters"
+                }
+
+                "TAKE_CONNECTION" ->
+                    "Take the stairs or elevator"
+
+                "EXIT_CONNECTION" ->
+                    "Exit the stairs or elevator"
+
+                "ARRIVAL" ->
+                    "You have arrived"
+
+                else ->
+                    "Continue for $distance meters"
+            }
+
+            steps.add("${steps.size + 1}. $text")
+        }
+
+        return steps
+    }
+
+    private fun showTurnByTurnDialog(directions: Directions) {
+        val steps = buildInstructionText(directions)
+
+        AlertDialog.Builder(this)
+            .setTitle("Turn-by-Turn Directions")
+            .setMessage(steps.joinToString("\n\n"))
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun showNavigationDialog() {
+        val roomNames = allSpaces
+            .map { it.name }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+        }
+
+        val startInput = AutoCompleteTextView(this).apply {
+            hint = "Start room"
+            setAdapter(
+                ArrayAdapter(
+                    this@MapActivity,
+                    android.R.layout.simple_dropdown_item_1line,
+                    roomNames
+                )
+            )
+        }
+
+        val endInput = AutoCompleteTextView(this).apply {
+            hint = "Destination room"
+            setAdapter(
+                ArrayAdapter(
+                    this@MapActivity,
+                    android.R.layout.simple_dropdown_item_1line,
+                    roomNames
+                )
+            )
+        }
+
+        // optional: preload previous choices
+        startSpace?.let { startInput.setText(it.name) }
+        endSpace?.let { endInput.setText(it.name) }
+
+        layout.addView(startInput)
+        layout.addView(endInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Start Navigation")
+            .setView(layout)
+            .setPositiveButton("Start") { _, _ ->
+                val startName = startInput.text.toString().trim()
+                val endName = endInput.text.toString().trim()
+
+                val selectedStart = allSpaces.find {
+                    it.name.equals(startName, ignoreCase = true)
+                }
+
+                val selectedEnd = allSpaces.find {
+                    it.name.equals(endName, ignoreCase = true)
+                }
+
+                if (selectedStart == null || selectedEnd == null) {
+                    Log.e("Mappedin", "Could not find selected spaces")
+                    return@setPositiveButton
+                }
+
+                if (selectedStart == selectedEnd) {
+                    Log.e("Mappedin", "Start and destination are the same")
+                    return@setPositiveButton
+                }
+
+                startSpace = selectedStart
+                endSpace = selectedEnd
+
+                getAndDrawDirections(selectedStart, selectedEnd)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }
+
 
 /*
         // Get all floor stacks
