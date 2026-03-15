@@ -39,6 +39,7 @@ import android.widget.AutoCompleteTextView
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
 import kotlin.math.roundToInt
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 
 //from https://developer.mappedin.com/android-sdk
@@ -63,6 +64,7 @@ class MapActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
+        window.navigationBarColor = getColor(R.color.black)
         title = "Display a Map"
 
         // Create a FrameLayout to hold both the map view and loading indicator
@@ -71,7 +73,7 @@ class MapActivity : AppCompatActivity() {
             0,
             0,
             0,
-            getNavigationBarHeight()
+            0
         )
 
         //create a LinearLayout to switch floors
@@ -89,13 +91,14 @@ class MapActivity : AppCompatActivity() {
 
 
         mapView = MapView(this)
-        container.addView(
-            mapView.view,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
+        val mapParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply {
+            bottomMargin = 160
+        }
+
+        container.addView(mapView.view, mapParams)
 
         container.addView(floorSwitcherLayout, floorParams)
 
@@ -150,7 +153,7 @@ class MapActivity : AppCompatActivity() {
                 }
         }
 
-        //add map button
+        //add naviation button
         startNavButton = Button(this).apply {
             text = "Start Navigation"
             setOnClickListener {
@@ -163,16 +166,54 @@ class MapActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.END
-            bottomMargin = 180
+            bottomMargin = 100
             marginEnd = 30
         }
 
         container.addView(startNavButton, navButtonParams)
+
+
+
+        //bottom navigation(android) bar
+        val bottomNav = BottomNavigationView(this).apply {
+            inflateMenu(R.menu.navigation_bar)
+
+            setOnItemSelectedListener { item ->
+                when (item.itemId) {
+                    R.id.nav_map -> {
+                        true
+                    }
+
+                    R.id.nav_search -> {
+                        //showNavigationDialog()
+                        true
+                    }
+
+                    R.id.nav_settings -> {
+                        Log.d("Mappedin", "Settings clicked")
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+        }
+        val bottomNavParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+        }
+
+        container.addView(bottomNav, bottomNavParams)
+
+
     }
 
 
-    // Place your code to be called when the map is ready here.
+    // this code executes when the map is ready
     private fun onMapReady(mapView: MapView) {
+
 
         //make doors visible
         mapView.updateState(
