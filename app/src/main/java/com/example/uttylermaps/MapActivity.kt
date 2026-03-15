@@ -34,37 +34,46 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import android.app.AlertDialog
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
 import kotlin.math.roundToInt
 import com.google.android.material.bottomnavigation.BottomNavigationView
-
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import androidx.core.graphics.toColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 //from https://developer.mappedin.com/android-sdk
 class MapActivity : AppCompatActivity() {
     private lateinit var mapView: MapView
     private lateinit var loadingIndicator: ProgressBar
     private lateinit var floorSwitcherLayout:  LinearLayout
+
     private var allFloors: List<Floor> = emptyList()// floorstack stores floor
     private var currentFloor: Floor? = null
-
     private var allSpaces: List<Space> = emptyList()
 
     //for navigation
     private var startSpace: Space? = null
     private var endSpace: Space? = null
-
-    private lateinit var startNavButton: Button
-
+    private lateinit var startNavButton: FloatingActionButton
     private var currentDirections: Directions? = null
 
+    private var isDark = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
-        window.navigationBarColor = getColor(R.color.black)
+        isDark =
+            (resources.configuration.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+       // window.navigationBarColor = getColor(R.color.bottom_nav_color)
         title = "Display a Map"
 
         // Create a FrameLayout to hold both the map view and loading indicator
@@ -121,6 +130,7 @@ class MapActivity : AppCompatActivity() {
                 key = "mik_WHm7lPemUXoBeBY0j5482076a",
                 secret = "mis_qGm14reCYjwNXATtwlqz4Zk29t48YRYpEHkrS2RzVdU94251086",
                 mapId = "696db8c80f54a6000bdca0ad",
+                viewId = if(isDark) "Ptix" else null
             )
 
         // Load the map data.
@@ -153,9 +163,13 @@ class MapActivity : AppCompatActivity() {
                 }
         }
 
-        //add naviation button
-        startNavButton = Button(this).apply {
-            text = "Start Navigation"
+
+        //add navigation button
+        startNavButton = FloatingActionButton(this).apply {
+            size = FloatingActionButton.SIZE_NORMAL
+            setImageResource(R.drawable.directions)
+            backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt())
+            //text = "Start Navigation"
             setOnClickListener {
                 showNavigationDialog()
             }
@@ -171,8 +185,6 @@ class MapActivity : AppCompatActivity() {
         }
 
         container.addView(startNavButton, navButtonParams)
-
-
 
         //bottom navigation(android) bar
         val bottomNav = BottomNavigationView(this).apply {
@@ -191,6 +203,8 @@ class MapActivity : AppCompatActivity() {
 
                     R.id.nav_settings -> {
                         Log.d("Mappedin", "Settings clicked")
+                        startActivity(Intent(this@MapActivity, SettingsActivity::class.java))
+
                         true
                     }
 
@@ -208,6 +222,27 @@ class MapActivity : AppCompatActivity() {
         container.addView(bottomNav, bottomNavParams)
 
 
+
+        ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bottomInset = systemBars.bottom
+
+            bottomNav.post {
+                val bottomNavHeight = bottomNav.height
+
+                val buttonParams = startNavButton.layoutParams as FrameLayout.LayoutParams
+                buttonParams.bottomMargin = bottomNavHeight + 30
+                buttonParams.marginEnd = 30
+                startNavButton.layoutParams = buttonParams
+
+                val updatedMapParams = mapView.view.layoutParams as FrameLayout.LayoutParams
+                updatedMapParams.bottomMargin = bottomNavHeight
+                mapView.view.layoutParams = updatedMapParams
+            }
+
+            insets
+        }
+
     }
 
 
@@ -216,11 +251,12 @@ class MapActivity : AppCompatActivity() {
 
 
         //make doors visible
+
         mapView.updateState(
             Doors.INTERIOR,
             DoorsUpdateState(
                 visible = true,
-                color = "brown",
+                color = if(isDark) "black" else "brown",
                 topColor = "brown",
                 opacity = 0.5
             ),
@@ -565,6 +601,7 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
 
+    //start navigation window
     private fun showNavigationDialog() {
         val roomNames = allSpaces
             .map { it.name }
@@ -576,7 +613,7 @@ class MapActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 40, 40, 40)
         }
-
+        //start room
         val startInput = AutoCompleteTextView(this).apply {
             hint = "Start room"
             setAdapter(
@@ -587,7 +624,7 @@ class MapActivity : AppCompatActivity() {
                 )
             )
         }
-
+        //destination
         val endInput = AutoCompleteTextView(this).apply {
             hint = "Destination room"
             setAdapter(
@@ -599,9 +636,10 @@ class MapActivity : AppCompatActivity() {
             )
         }
 
-        // optional: preload previous choices
+        //preload previous choices
         startSpace?.let { startInput.setText(it.name) }
         endSpace?.let { endInput.setText(it.name) }
+
 
         layout.addView(startInput)
         layout.addView(endInput)
