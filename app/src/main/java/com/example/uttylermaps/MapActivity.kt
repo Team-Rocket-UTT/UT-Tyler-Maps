@@ -46,6 +46,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.mappedin.models.GetDirectionsOptions
 
 //from https://developer.mappedin.com/android-sdk
 class MapActivity : AppCompatActivity() {
@@ -256,7 +257,7 @@ class MapActivity : AppCompatActivity() {
             Doors.INTERIOR,
             DoorsUpdateState(
                 visible = true,
-                color = if(isDark) "black" else "brown",
+                color = if(isDark) "black" else "grey",
                 topColor = "brown",
                 opacity = 0.5
             ),
@@ -510,8 +511,10 @@ class MapActivity : AppCompatActivity() {
         mapView.paths.removeAll()
 
         mapView.mapData.getDirections(
+
             NavigationTarget.SpaceTarget(start),
             NavigationTarget.SpaceTarget(end),
+            // GetDirectionsOptions(accessible = true),
         ) { result ->
             result.onSuccess { directions ->
                 if (directions != null) {

@@ -22,7 +22,7 @@
     <string-array name="theme_values">
         <item>light</item>
         <item>dark</item>
-        <item>systemDefault</item>
+        <item>system</item>
     </string-array>
 </resources>
 
