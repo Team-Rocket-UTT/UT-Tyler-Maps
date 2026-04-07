@@ -11,6 +11,7 @@ navigationFragmentKtx = "2.9.7"
 navigationUiKtx = "2.9.7"
 mappedin = "6.2.0-beta.1"
 indooratlas = "3.7.1"
+preference = "1.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -23,6 +24,8 @@ androidx-constraintlayout = { group = "androidx.constraintlayout", name = "const
 androidx-navigation-fragment-ktx = { group = "androidx.navigation", name = "navigation-fragment-ktx", version.ref = "navigationFragmentKtx" }
 androidx-navigation-ui-ktx = { group = "androidx.navigation", name = "navigation-ui-ktx", version.ref = "navigationUiKtx" }
 mappedin =  { module = "com.mappedin.sdk:mappedin", version.ref = "mappedin" }
+androidx-preference = { group = "androidx.preference", name = "preference", version.ref = "preference" }
+
 indooratlas-sdk = { module = "com.indooratlas.android:indooratlas-android-sdk", version.ref = "indooratlas" }
 
 [plugins]
