@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-    }
+        maven("https://dl.cloudsmith.io/public/indooratlas/mvn-public/maven/")    }
 }
 
 rootProject.name = "UT Tyler Maps"

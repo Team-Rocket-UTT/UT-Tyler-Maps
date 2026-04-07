@@ -34,15 +34,24 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import android.app.AlertDialog
+import android.content.pm.PackageManager
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
 import kotlin.math.roundToInt
 
+import com.indooratlas.android.sdk.IALocation
+import com.indooratlas.android.sdk.IALocationListener
+import com.indooratlas.android.sdk.IALocationManager
+import com.indooratlas.android.sdk.IALocationRequest
+import com.mappedin.models.BlueDotOptions
+import com.mappedin.models.BlueDotPositionUpdate
+import com.mappedin.models.BlueDotUpdateOptions
+
 
 //from https://developer.mappedin.com/android-sdk
-class MapActivity : AppCompatActivity() {
+class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var mapView: MapView
     private lateinit var loadingIndicator: ProgressBar
     private lateinit var floorSwitcherLayout:  LinearLayout
@@ -58,6 +67,10 @@ class MapActivity : AppCompatActivity() {
     private lateinit var startNavButton: Button
 
     private var currentDirections: Directions? = null
+
+    //indoor atlas
+    private lateinit var iaLocationManager: IALocationManager
+
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -168,6 +181,20 @@ class MapActivity : AppCompatActivity() {
         }
 
         container.addView(startNavButton, navButtonParams)
+
+        //initialize IndoorAtlas
+        iaLocationManager = IALocationManager.create(this)
+
+        //verify permissions are granted
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED) {
+
+            requestPermissions(
+                arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                0
+            )
+        }
+
     }
 
 
@@ -304,11 +331,82 @@ class MapActivity : AppCompatActivity() {
             }
         }
 
+        enableBlueDot()
 
 
 
 
     }
+
+
+
+    private fun enableBlueDot() {
+        val options = BlueDotOptions(
+            accuracyRing = BlueDotOptions.AccuracyRing(color = "#2266ff", opacity = 0.25),
+            color = "#2266ff",
+            heading = BlueDotOptions.Heading(color = "#2266ff", opacity = 0.6),
+            initialState = BlueDotOptions.InitialState.INACTIVE,
+            radius = 12.0,
+            watchDevicePosition = false
+        )
+
+        mapView.blueDot.enable(options) { result ->
+            result.fold(
+                onSuccess = {
+                    Log.d("BlueDot", "Blue Dot enabled")
+                },
+                onFailure = { error ->
+                    Log.e("BlueDot", "Error enabling Blue Dot: ${error.message}")
+                }
+            )
+        }
+    }
+    override fun onResume() {
+        super.onResume()
+        iaLocationManager.requestLocationUpdates(
+            IALocationRequest.create(),
+            this
+        )
+    }
+
+    override fun onPause() {
+        iaLocationManager.removeLocationUpdates(this)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        iaLocationManager.destroy()
+        super.onDestroy()
+    }
+
+    override fun onLocationChanged(location: IALocation) {
+        val mappedFloorId = currentFloor?.id
+        if (mappedFloorId == null) {
+            Log.w("BlueDot", "No mapped floor selected yet")
+            return
+        }
+
+        val position = BlueDotPositionUpdate(
+            accuracy = BlueDotPositionUpdate.Accuracy.Value(location.accuracy.toDouble()),
+            floorId = BlueDotPositionUpdate.FloorId.Id(mappedFloorId),
+            latitude = BlueDotPositionUpdate.Latitude.Value(location.latitude),
+            longitude = BlueDotPositionUpdate.Longitude.Value(location.longitude)
+        )
+
+        mapView.blueDot.update(position, BlueDotUpdateOptions(animate = true)) { result ->
+            result.fold(
+                onSuccess = {
+                    Log.d("BlueDot", "Blue Dot updated")
+                },
+                onFailure = { error ->
+                    Log.e("BlueDot", "Blue Dot update failed: ${error.message}")
+                }
+            )
+        }
+    }
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+    }
+
     private fun floorSwitcher(){
         floorSwitcherLayout.removeAllViews()
 
@@ -323,7 +421,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    fun switchToFloor(floor: Floor) {
+    fun switchToFloor(floor: Floor) {gi
         currentFloor = floor
 
         mapView.setFloor(floor.id) { result ->
