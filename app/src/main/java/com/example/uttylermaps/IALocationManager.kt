@@ -1,6 +1,7 @@
 package com.example.uttylermaps
 
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +69,24 @@ class IndoorAtlasActivity : AppCompatActivity(), IALocationListener {
         return requiredPermissions().all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    private fun requiredPermissions(): Array<String> {
+        val permissions = mutableListOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+
+        return permissions.toTypedArray()
     }
 
     override fun onLocationChanged(location: IALocation) {

@@ -1,6 +1,5 @@
 package com.example.uttylermaps
 
-import android.R.attr.text
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -9,6 +8,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.ProgressBar
+import android.app.Activity
+import androidx.activity.result.contract.ActivityResultContracts
 import com.mappedin.models.Space
 import androidx.appcompat.app.AppCompatActivity
 import com.mappedin.MapView
@@ -16,9 +17,7 @@ import com.mappedin.models.AddLabelOptions
 import com.mappedin.models.Doors
 import com.mappedin.models.DoorsUpdateState
 import com.mappedin.models.Floor
-import com.mappedin.models.FloorStack
 import com.mappedin.models.GeometryUpdateState
-import com.mappedin.models.UpdateState
 import com.mappedin.models.GetMapDataWithCredentialsOptions
 import com.mappedin.models.LabelAppearance
 import com.mappedin.models.MapDataType
@@ -30,55 +29,72 @@ import com.mappedin.models.CameraAnimationOptions
 import com.mappedin.models.CameraTarget
 import com.mappedin.models.EasingFunction
 import com.mappedin.models.PointOfInterest
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.graphics.Color
-import android.widget.ArrayAdapter
-import android.widget.AutoCompleteTextView
-import com.mappedin.models.Directions
-import com.mappedin.models.NavigationTarget
-import kotlin.math.roundToInt
+import com.mappedin.models.Coordinate
 
 import com.indooratlas.android.sdk.IALocation
 import com.indooratlas.android.sdk.IALocationListener
 import com.indooratlas.android.sdk.IALocationManager
 import com.indooratlas.android.sdk.IALocationRequest
-import com.mappedin.models.BlueDotOptions
-import com.mappedin.models.BlueDotPositionUpdate
-import com.mappedin.models.BlueDotUpdateOptions
 
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.mappedin.models.GetDirectionsOptions
+
+//for search
+import android.widget.ListView
+import android.widget.ArrayAdapter
+import android.widget.SearchView
+import android.widget.TextView
 
 //from https://developer.mappedin.com/android-sdk
 class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var mapView: MapView
     private lateinit var loadingIndicator: ProgressBar
-    private lateinit var floorSwitcherLayout:  LinearLayout
+    private lateinit var floorSwitcherLayout: LinearLayout
 
-    private var allFloors: List<Floor> = emptyList()// floorstack stores floor
-    private var currentFloor: Floor? = null
     private var allSpaces: List<Space> = emptyList()
 
-    //for navigation
-    private var startSpace: Space? = null
-    private var endSpace: Space? = null
+    //buttons
     private lateinit var startNavButton: FloatingActionButton
-    private var currentDirections: Directions? = null
+    private lateinit var myLocationButton: FloatingActionButton
 
     //indoor atlas
     private lateinit var iaLocationManager: IALocationManager
+    private var lastLocation: IALocation? = null
+    private var hasPermissions = false
 
+    //managers
+    private lateinit var floorManager: FloorManager
+    private lateinit var blueDotManager: BlueDotManager
+    private lateinit var navigationManager: NavigationManager
+
+    //for searching
+    private lateinit var searchOverlay: LinearLayout
+    private lateinit var searchResults: ListView
+    private lateinit var searchAdapter: ArrayAdapter<String>
+    private lateinit var topSearchView: SearchView
+    private var filteredRooms: MutableList<String> = mutableListOf()
+    private val searchLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val roomName = result.data?.getStringExtra("selected_room")
+            if (roomName != null) {
+                navigateToRoom(roomName)
+            }
+        }
+    }
+
+    //track highlighted space so we can clear it
+    private var highlightedSpace: Space? = null
 
     private var isDark = false
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -88,19 +104,35 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                     android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
                     android.content.res.Configuration.UI_MODE_NIGHT_YES
 
-       // window.navigationBarColor = getColor(R.color.bottom_nav_color)
         title = "Display a Map"
 
-        // Create a FrameLayout to hold both the map view and loading indicator
-        val container = FrameLayout(this)
-        container.setPadding(
-            0,
-            0,
-            0,
-            0
+        val container = setupUI()
+        setContentView(container)
+
+        //initialize IndoorAtlas
+        iaLocationManager = IALocationManager.create(this)
+
+        //verify permissions are granted
+        val permissions = mutableListOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION
         )
 
-        //create a LinearLayout to switch floors
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+        }
+
+        requestPermissions(permissions.toTypedArray(), 0)
+
+        loadMap()
+    }
+
+    //build the whole layout programmatically
+    private fun setupUI(): FrameLayout {
+        val container = FrameLayout(this)
+        container.setPadding(0, 0, 0, 0)
+
+        //floor switcher
         floorSwitcherLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -112,8 +144,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             topMargin = 80
         }
 
-
-
+        //map view
         mapView = MapView(this)
         val mapParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -123,124 +154,38 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         }
 
         container.addView(mapView.view, mapParams)
-
         container.addView(floorSwitcherLayout, floorParams)
 
-        // Add loading indicator
+        //loading spinner
         loadingIndicator = ProgressBar(this)
-        val loadingParams =
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        loadingParams.gravity = Gravity.CENTER
+        val loadingParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.CENTER
+        }
         container.addView(loadingIndicator, loadingParams)
 
-        setContentView(container)
+        //floating buttons
+        buildLocationButton(container)
+        buildNavButton(container)
 
-        // See Trial API key Terms and Conditions
-        // https://developer.mappedin.com/docs/demo-keys-and-maps
-        val options =
-            GetMapDataWithCredentialsOptions(
-                key = "mik_WHm7lPemUXoBeBY0j5482076a",
-                secret = "mis_qGm14reCYjwNXATtwlqz4Zk29t48YRYpEHkrS2RzVdU94251086",
-                mapId = "696db8c80f54a6000bdca0ad",
-                viewId = if(isDark) "Ptix" else null
-            )
-
-        // Load the map data.
-        mapView.getMapData(options) { result ->
-            result
-                .onSuccess {
-                    Log.d("Mappedin", "getMapData success")
-                    // Display the map.
-                    mapView.show3dMap(Show3DMapOptions()) { r ->
-                        r.onSuccess {
-                            runOnUiThread {
-                                //Map is laoded and ready
-                                loadingIndicator.visibility = android.view.View.GONE
-                            }
-                            onMapReady(mapView)
-                        }
-                        r.onFailure {
-                            //error showing map
-                            runOnUiThread {
-                                loadingIndicator.visibility = android.view.View.GONE
-                            }
-                            Log.e("Mappedin", "show3dMap error: $it")
-                        }
-                    }
-                }.onFailure {// error loading map
-                    runOnUiThread {
-                        loadingIndicator.visibility = android.view.View.GONE
-                    }
-                    Log.e("Mappedin", "getMapData error: $it")
-                }
-        }
-
-
-        //add navigation button
-        startNavButton = FloatingActionButton(this).apply {
-            size = FloatingActionButton.SIZE_NORMAL
-            setImageResource(R.drawable.directions)
-            backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt())
-            //text = "Start Navigation"
-            setOnClickListener {
-                showNavigationDialog()
-            }
-        }
-
-        val navButtonParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            bottomMargin = 100
-            marginEnd = 30
-        }
-
-        container.addView(startNavButton, navButtonParams)
-
-        //bottom navigation(android) bar
-        val bottomNav = BottomNavigationView(this).apply {
-            inflateMenu(R.menu.navigation_bar)
-
-            setOnItemSelectedListener { item ->
-                when (item.itemId) {
-                    R.id.nav_map -> {
-                        true
-                    }
-
-                    R.id.nav_search -> {
-                        //showNavigationDialog()
-                        true
-                    }
-
-                    R.id.nav_settings -> {
-                        Log.d("Mappedin", "Settings clicked")
-                        startActivity(Intent(this@MapActivity, SettingsActivity::class.java))
-
-                        true
-                    }
-
-                    else -> false
-                }
-            }
-        }
+        //bottom nav bar
+        val bottomNav = buildBottomNav()
         val bottomNavParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM
         }
-
         container.addView(bottomNav, bottomNavParams)
 
+        //search overlay
+        buildSearchOverlay(container)
 
-
+        //fix margins so buttons sit above bottom nav
         ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val bottomInset = systemBars.bottom
+            val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars())
 
             bottomNav.post {
                 val bottomNavHeight = bottomNav.height
@@ -250,38 +195,294 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 buttonParams.marginEnd = 30
                 startNavButton.layoutParams = buttonParams
 
+                val locBtnParams = myLocationButton.layoutParams as FrameLayout.LayoutParams
+                locBtnParams.bottomMargin = bottomNavHeight + 30
+                locBtnParams.marginStart = 30
+                myLocationButton.layoutParams = locBtnParams
+
                 val updatedMapParams = mapView.view.layoutParams as FrameLayout.LayoutParams
                 updatedMapParams.bottomMargin = bottomNavHeight
                 mapView.view.layoutParams = updatedMapParams
             }
 
+            //push search overlay below status bar
+            searchOverlay.setPadding(24, statusBar.top + 16, 24, 0)
+
             insets
         }
 
-        //initialize IndoorAtlas
-        iaLocationManager = IALocationManager.create(this)
+        return container
+    }
 
-        //verify permissions are granted
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED) {
+    //my location FAB
+    private fun buildLocationButton(container: FrameLayout) {
+        myLocationButton = FloatingActionButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_mylocation)
+            backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt())
+            setOnClickListener { moveToUserLocation() }
+        }
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+            bottomMargin = 100
+            marginStart = 30
+        }
+        container.addView(myLocationButton, params)
+    }
 
-            requestPermissions(
-                arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
-                0
-            )
+    //navigation FAB
+    private fun buildNavButton(container: FrameLayout) {
+        startNavButton = FloatingActionButton(this).apply {
+            size = FloatingActionButton.SIZE_NORMAL
+            setImageResource(R.drawable.directions)
+            backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt())
+            setOnClickListener { navigationManager.showNavigationDialog(allSpaces) }
+        }
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            bottomMargin = 100
+            marginEnd = 30
+        }
+        container.addView(startNavButton, params)
+    }
+
+    //bottom navigation bar
+    private fun buildBottomNav(): BottomNavigationView {
+        return BottomNavigationView(this).apply {
+            inflateMenu(R.menu.navigation_bar)
+
+            setOnItemSelectedListener { item ->
+                when (item.itemId) {
+                    R.id.nav_map -> true
+                    R.id.nav_search -> true
+                    R.id.nav_settings -> {
+                        Log.d("Mappedin", "Settings clicked")
+                        startActivity(Intent(this@MapActivity, SettingsActivity::class.java))
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+    }
+
+    //search overlay with search bar, quick filters, and results list
+    private fun buildSearchOverlay(container: FrameLayout) {
+        searchOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 0, 24, 0)
         }
 
+        topSearchView = buildSearchView()
+        searchOverlay.addView(topSearchView)
+
+        searchOverlay.addView(buildQuickFilterButtons())
+
+        filteredRooms = mutableListOf()
+        searchAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, filteredRooms)
+
+        searchResults = ListView(this).apply {
+            visibility = android.view.View.GONE
+            setBackgroundColor(if (isDark) "#1E1E1E".toColorInt() else android.graphics.Color.WHITE)
+            elevation = 12f
+            adapter = searchAdapter
+        }
+
+        searchResults.setOnItemClickListener { _, _, position, _ ->
+            val selectedRoom = filteredRooms[position]
+            navigateToRoom(selectedRoom)
+            searchResults.visibility = android.view.View.GONE
+            topSearchView.setQuery(selectedRoom, false)
+            topSearchView.clearFocus()
+        }
+
+        searchOverlay.addView(searchResults)
+
+        val searchParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP
+        }
+        container.addView(searchOverlay, searchParams)
     }
 
+    //styled search bar
+    private fun buildSearchView(): SearchView {
+        return SearchView(this).apply {
+            queryHint = "Search rooms, offices, restrooms..."
+            setIconifiedByDefault(false)
+
+            val bgColor = if (isDark) "#1E1E1E".toColorInt() else android.graphics.Color.WHITE
+            val textColor = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+            val hintColor = if (isDark) "#AAAAAA".toColorInt() else "#666666".toColorInt()
+            val iconColor = if (isDark) "#DDDDDD".toColorInt() else "#555555".toColorInt()
+
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 50f
+                setColor(bgColor)
+            }
+            setPadding(24, 12, 24, 12)
+            elevation = 16f
+
+            findViewById<android.view.View?>(androidx.appcompat.R.id.search_plate)?.background = null
+
+            findViewById<TextView?>(androidx.appcompat.R.id.search_src_text)?.apply {
+                setTextColor(textColor)
+                setHintTextColor(hintColor)
+            }
+
+            findViewById<android.widget.ImageView?>(androidx.appcompat.R.id.search_mag_icon)
+                ?.setColorFilter(iconColor)
+
+            findViewById<android.widget.ImageView?>(androidx.appcompat.R.id.search_close_btn)
+                ?.setColorFilter(iconColor)
+
+            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                override fun onQueryTextSubmit(query: String?): Boolean {
+                    if (!query.isNullOrBlank()) {
+                        navigateToRoom(query)
+                        searchResults.visibility = android.view.View.GONE
+                        clearFocus()
+                    }
+                    return true
+                }
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    val query = newText?.trim()?.lowercase() ?: ""
+                    filteredRooms.clear()
+
+                    if (query.isBlank()) {
+                        searchResults.visibility = android.view.View.GONE
+                    } else {
+                        filteredRooms.addAll(
+                            allSpaces.map { it.name }
+                                .filter { it.isNotBlank() && it.lowercase().contains(query) }
+                                .distinct()
+                                .sorted()
+                        )
+                        searchAdapter.notifyDataSetChanged()
+                        searchResults.visibility =
+                            if (filteredRooms.isEmpty()) android.view.View.GONE
+                            else android.view.View.VISIBLE
+                    }
+                    return true
+                }
+            })
+        }
+    }
+
+    //quick filter buttons row
+    private fun buildQuickFilterButtons(): LinearLayout {
+        val buttonBg = if (isDark) "#2A2A2A".toColorInt() else "#EEEEEE".toColorInt()
+        val buttonText = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+
+            addView(Button(this@MapActivity).apply {
+                text = "Restrooms"
+                setBackgroundColor(buttonBg)
+                setTextColor(buttonText)
+                setOnClickListener { filterRoomsByKeyword("restroom") }
+            })
+
+            addView(Button(this@MapActivity).apply {
+                text = "Offices"
+                setBackgroundColor(buttonBg)
+                setTextColor(buttonText)
+                setOnClickListener { filterRoomsByKeyword("office") }
+            })
+
+            addView(Button(this@MapActivity).apply {
+                text = "Classrooms"
+                setBackgroundColor(buttonBg)
+                setTextColor(buttonText)
+                setOnClickListener { filterClassrooms() }
+            })
+        }
+    }
+
+    private fun filterRoomsByKeyword(keyword: String) {
+        filteredRooms.clear()
+        filteredRooms.addAll(
+            allSpaces.map { it.name }
+                .filter { it.isNotBlank() && it.contains(keyword, ignoreCase = true) }
+                .distinct()
+                .sorted()
+        )
+        searchAdapter.notifyDataSetChanged()
+        searchResults.visibility =
+            if (filteredRooms.isEmpty()) android.view.View.GONE
+            else android.view.View.VISIBLE
+    }
+
+    private fun filterClassrooms() {
+        filteredRooms.clear()
+        filteredRooms.addAll(
+            allSpaces.map { it.name }
+                .filter { it.isNotBlank() && it.any { ch -> ch.isDigit() } }
+                .distinct()
+                .sorted()
+        )
+        searchAdapter.notifyDataSetChanged()
+        searchResults.visibility =
+            if (filteredRooms.isEmpty()) android.view.View.GONE
+            else android.view.View.VISIBLE
     }
 
 
-    // this code executes when the map is ready
-    private fun onMapReady(mapView: MapView) {
+    private fun loadMap() {
+        val options =
+            GetMapDataWithCredentialsOptions(
+                key = "mik_WHm7lPemUXoBeBY0j5482076a",
+                secret = "mis_qGm14reCYjwNXATtwlqz4Zk29t48YRYpEHkrS2RzVdU94251086",
+                mapId = "696db8c80f54a6000bdca0ad",
+                viewId = if(isDark) "Ptix" else null
+            )
 
+        mapView.getMapData(options) { result ->
+            result
+                .onSuccess {
+                    Log.d("Mappedin", "getMapData success")
+                    mapView.show3dMap(Show3DMapOptions()) { r ->
+                        r.onSuccess {
+                            runOnUiThread {
+                                loadingIndicator.visibility = android.view.View.GONE
+                            }
+                            onMapReady()
+                        }
+                        r.onFailure {
+                            runOnUiThread {
+                                loadingIndicator.visibility = android.view.View.GONE
+                            }
+                            Log.e("Mappedin", "show3dMap error: $it")
+                        }
+                    }
+                }.onFailure {
+                    runOnUiThread {
+                        loadingIndicator.visibility = android.view.View.GONE
+                    }
+                    Log.e("Mappedin", "getMapData error: $it")
+                }
+        }
+    }
+
+
+    //this code executes when the map is ready
+    private fun onMapReady() {
+
+        //setup the managers
+        floorManager = FloorManager(mapView)
+        blueDotManager = BlueDotManager(mapView)
+        navigationManager = NavigationManager(this, mapView)
 
         //make doors visible
-
         mapView.updateState(
             Doors.INTERIOR,
             DoorsUpdateState(
@@ -290,18 +491,16 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 topColor = "brown",
                 opacity = 0.5
             ),
+        )
 
-            )
-
-        //add labels to areas
+        //make spaces interactive (clickable)
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
+                allSpaces = spaces
                 spaces.forEach { space ->
                     mapView.updateState(
                         space,
-                        GeometryUpdateState(
-                            interactive = true
-                        )
+                        GeometryUpdateState(interactive = true)
                     ) { result ->
                         result.onFailure {
                             Log.e("Mappedin", "Failed to update space", it)
@@ -311,142 +510,160 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             }
         }
 
-
-        //add labels
+        //add labels to rooms
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
-                allSpaces = spaces //add all the spaces
                 for (space in spaces) {
                     if (space.name.isNotEmpty()) {
-                        if (space.name.contains("Restroom")) {
-                            val color = "#4e7498"
-                            val appearance =
-                                LabelAppearance(
-                                    color = color,
-                                    //icon = space.images.firstOrNull()?.url ?: svgIcon,
-                                )
-                            mapView.labels.add(
-                                target = space,
-                                text = space.name,
-                                options = AddLabelOptions(
-                                    labelAppearance = appearance,
-                                    interactive = true
-                                ),
-                            )
+                        val appearance = if (space.name.contains("Restroom")) {
+                            LabelAppearance(color = "#4e7498")
                         } else {
-                            val color = "blue"
-                            val appearance =
-                                LabelAppearance(
-                                    //color = color,
-                                    //icon = space.images.firstOrNull()?.url ?: svgIcon,
-                                )
-                            mapView.labels.add(
-                                target = space,
-                                text = space.name,
-                                options = AddLabelOptions(
-                                    labelAppearance = appearance,
-                                    interactive = true
-                                ),
-                            )
+                            LabelAppearance()
                         }
+
+                        mapView.labels.add(
+                            target = space,
+                            text = space.name,
+                            options = AddLabelOptions(
+                                labelAppearance = appearance,
+                                interactive = true
+                            ),
+                        )
                     }
                 }
             }
         }
 
         //load floors
-        mapView.mapData.getByType<Floor>(MapDataType.FLOOR){ result->
+        mapView.mapData.getByType<Floor>(MapDataType.FLOOR) { result ->
             result.onSuccess { floors ->
-                allFloors = floors.sortedBy { it.name } //?: emptyList()
-
-                if(allFloors.isNotEmpty()){
-                    currentFloor = allFloors.first() //default to 1st floor
-                    Log.d("Mappedin", "Loaded floors: ${allFloors.map { it.name }}")
-                }
-
-                //after floors load
-                runOnUiThread {
-                    floorSwitcher()
-                }
-
-
-
+                floorManager.setFloors(floors)
+                runOnUiThread { buildFloorSwitcher() }
             }
-
             result.onFailure {
                 Log.e("Mappedin", "failed to load floors", it)
             }
         }
-        //animate pois
-        val animationDuration = 4000
 
-        // Get the map center as the starting point for bearing calculations.
-        mapView.mapData.mapCenter { centerResult ->
-            centerResult.onSuccess { mapCenter ->
-                if (mapCenter == null) {
-                    Log.e("MappedinDemo", "Map center is null")
-                    return@onSuccess
-                }
-
-                // Get all points of interest.
-                mapView.mapData.getByType<PointOfInterest>(MapDataType.POINT_OF_INTEREST) { result ->
-                    result.onSuccess { pois ->
-                        // Start iterating through POIs with initial position from map center.
-                        animateThroughPOIs(
-                            mapView = mapView,
-                            pois = pois,
-                            index = 0,
-                            startLat = mapCenter.latitude,
-                            startLon = mapCenter.longitude,
-                            animationDuration = animationDuration,
-                        )
-                    }
-                    result.onFailure { error ->
-                        Log.e("MappedinDemo", "Failed to get POIs: $error")
-                    }
-                }
-            }
-            centerResult.onFailure { error ->
-                Log.e("MappedinDemo", "Failed to get map center: $error")
-            }
-        }
-
-        enableBlueDot()
-
-
-
-
+        blueDotManager.enable()
     }
 
 
+    //build floor buttons from the loaded floors
+    private fun buildFloorSwitcher() {
+        floorSwitcherLayout.removeAllViews()
 
-    private fun enableBlueDot() {
-        val options = BlueDotOptions(
-            accuracyRing = BlueDotOptions.AccuracyRing(color = "#2266ff", opacity = 0.25),
-            color = "#2266ff",
-            heading = BlueDotOptions.Heading(color = "#2266ff", opacity = 0.6),
-            initialState = BlueDotOptions.InitialState.INACTIVE,
-            radius = 12.0,
-            watchDevicePosition = false
-        )
-
-        mapView.blueDot.enable(options) { result ->
-            result.fold(
-                onSuccess = {
-                    Log.d("BlueDot", "Blue Dot enabled")
-                },
-                onFailure = { error ->
-                    Log.e("BlueDot", "Error enabling Blue Dot: ${error.message}")
+        for (floor in floorManager.allFloors) {
+            val button = Button(this).apply {
+                text = floor.name
+                setOnClickListener {
+                    floorManager.switchToFloor(floor)
                 }
+            }
+            floorSwitcherLayout.addView(button)
+        }
+    }
+
+
+    //go to user location on map
+    private fun moveToUserLocation() {
+        val location = lastLocation
+
+        if (location == null) {
+            Log.e("Location", "No location yet")
+            return
+        }
+
+        mapView.camera.animateTo(
+            CameraTarget(
+                center = Coordinate(location.latitude, location.longitude),
+                zoomLevel = 60.0,
+                pitch = 0.0
+            ),
+            CameraAnimationOptions(
+                duration = 1000,
+                easing = EasingFunction.EASE_OUT
             )
-        }
+        )
     }
+
+    //open the search screen
+    private fun openSearch() {
+        val intent = Intent(this, SearchActivity::class.java)
+
+        val roomNames = allSpaces
+            .map { it.name }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+
+        intent.putStringArrayListExtra("room_names", ArrayList(roomNames))
+        searchLauncher.launch(intent)
+    }
+
+    //clear previous highlight and reset it back to default
+    private fun clearHighlight() {
+        val previous = highlightedSpace ?: return
+
+        mapView.updateState(
+            previous,
+            GeometryUpdateState(
+                color = null,
+                opacity = null
+            )
+        ) { result ->
+            result.onFailure {
+                Log.e("Mappedin", "Failed to clear highlight", it)
+            }
+        }
+
+        highlightedSpace = null
+    }
+
+    //zoom to a room when user picks one from search
+    private fun navigateToRoom(roomName: String) {
+        val space = allSpaces.find {
+            it.name.equals(roomName, ignoreCase = true)
+        }
+
+        if (space == null) {
+            Log.e("Mappedin", "Could not find space: $roomName")
+            return
+        }
+
+        //switch to correct floor
+        val spaceFloor = space.floor
+        if (spaceFloor != null && floorManager.currentFloor?.id != spaceFloor.id) {
+            floorManager.switchToFloor(spaceFloor)
+        }
+
+        //clear old highlight before setting new one
+
+        //zoom camera to the room
+        mapView.camera.animateTo(
+            CameraTarget(
+                center = space.center,
+                zoomLevel = 20.0,
+                pitch = 0.0
+            ),
+            CameraAnimationOptions(
+                duration = 1000,
+                easing = EasingFunction.EASE_OUT
+            )
+        )
+    }
+
+
+    // --- indoor atlas callbacks ---
+
     override fun onResume() {
         super.onResume()
-        iaLocationManager.requestLocationUpdates(
-            IALocationRequest.create(),
-            this
-        )
+        if(hasPermissions) {
+            iaLocationManager.requestLocationUpdates(
+                IALocationRequest.create(),
+                this
+            )
+        }
     }
 
     override fun onPause() {
@@ -459,344 +676,47 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         super.onDestroy()
     }
 
-    override fun onLocationChanged(location: IALocation) {
-        val mappedFloorId = currentFloor?.id
-        if (mappedFloorId == null) {
-            Log.w("BlueDot", "No mapped floor selected yet")
-            return
-        }
-
-        val position = BlueDotPositionUpdate(
-            accuracy = BlueDotPositionUpdate.Accuracy.Value(location.accuracy.toDouble()),
-            floorId = BlueDotPositionUpdate.FloorId.Id(mappedFloorId),
-            latitude = BlueDotPositionUpdate.Latitude.Value(location.latitude),
-            longitude = BlueDotPositionUpdate.Longitude.Value(location.longitude)
-        )
-
-        mapView.blueDot.update(position, BlueDotUpdateOptions(animate = true)) { result ->
-            result.fold(
-                onSuccess = {
-                    Log.d("BlueDot", "Blue Dot updated")
-                },
-                onFailure = { error ->
-                    Log.e("BlueDot", "Blue Dot update failed: ${error.message}")
-                }
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if(requestCode == 0 && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+            hasPermissions = true
+            iaLocationManager.requestLocationUpdates(
+                IALocationRequest.create(),
+                this
             )
         }
     }
+
+    override fun onLocationChanged(location: IALocation) {
+        lastLocation = location
+
+        Log.d("BlueDot", "IA location: lat=${location.latitude}, lon=${location.longitude}, " +
+                "floor=${location.floorLevel}, accuracy=${location.accuracy}")
+
+        val mappedFloor = floorManager.findFloorForLevel(location.floorLevel)
+
+        if (mappedFloor == null) {
+            Log.w("BlueDot", "No Mappedin floor found for IA floorLevel=${location.floorLevel}. ")
+            return
+        }
+
+        if (floorManager.currentFloor?.id != mappedFloor.id) {
+            floorManager.switchToFloor(mappedFloor)
+        }
+
+        blueDotManager.updatePosition(
+            lat = location.latitude,
+            lon = location.longitude,
+            accuracy = location.accuracy.toDouble(),
+            floor = mappedFloor
+        )
+    }
+
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
     }
 
-    private fun floorSwitcher(){
-        floorSwitcherLayout.removeAllViews()
-
-        for (floor in allFloors) {
-            val button = Button(this).apply {
-                text = floor.name
-                setOnClickListener {
-                    switchToFloor(floor)
-                }
-            }
-            floorSwitcherLayout.addView(button)
-        }
-    }
-
-    fun switchToFloor(floor: Floor) {
-        currentFloor = floor
-
-        mapView.setFloor(floor.id) { result ->
-            result.onSuccess {
-                Log.d("Mappedin", "Floor switched to ${floor.name}")
-            }
-            result.onFailure{
-                Log.e("Mappedin", "Failed to switch floor", it)
-            }
-
-        }
-    }
-    private fun getNavigationBarHeight(): Int {
-        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
-    }
-
-    /**
-     * Recursively animates through each point of interest.
-     */
-    private fun animateThroughPOIs(
-        mapView: MapView,
-        pois: List<PointOfInterest>,
-        index: Int,
-        startLat: Double,
-        startLon: Double,
-        animationDuration: Int,
-    ) {
-        if (index >= pois.size) {
-            Log.d("MappedinDemo", "Finished animating through all POIs")
-            return
-        }
-
-        val poi = pois[index]
-
-        // Label the point of interest.
-        mapView.labels.add(target = poi.coordinate, text = poi.name)
-
-        // Calculate the bearing between the current position and the POI.
-        val bearing =
-            calcBearing(
-                startLat,
-                startLon,
-                poi.coordinate.latitude,
-                poi.coordinate.longitude,
-            )
-
-        // Animate to the current point of interest.
-        mapView.camera.animateTo(
-            target =
-                CameraTarget(
-                    bearing = bearing,
-                    pitch = 80.0,
-                    zoomLevel = 50.0,
-                    center = poi.coordinate,
-                ),
-            options =
-                CameraAnimationOptions(
-                    duration = animationDuration,
-                    easing = EasingFunction.EASE_OUT,
-                ),
-        )
-
-        // Wait for the animation to complete before moving to the next POI.
-        Handler(Looper.getMainLooper()).postDelayed({
-            animateThroughPOIs(
-                mapView = mapView,
-                pois = pois,
-                index = index + 1,
-                startLat = poi.coordinate.latitude,
-                startLon = poi.coordinate.longitude,
-                animationDuration = animationDuration,
-            )
-        }, animationDuration.toLong())
-    }
-
-    /**
-     * Calculate the bearing between two points.
-     */
-    private fun calcBearing(
-        startLat: Double,
-        startLng: Double,
-        destLat: Double,
-        destLng: Double,
-    ): Double {
-        val startLatRad = toRadians(startLat)
-        val startLngRad = toRadians(startLng)
-        val destLatRad = toRadians(destLat)
-        val destLngRad = toRadians(destLng)
-
-        val y = sin(destLngRad - startLngRad) * cos(destLatRad)
-        val x =
-            cos(startLatRad) * sin(destLatRad) -
-                    sin(startLatRad) * cos(destLatRad) * cos(destLngRad - startLngRad)
-        var brng = atan2(y, x)
-        brng = toDegrees(brng)
-        return (brng + 360) % 360
-    }
-
-    /** Converts from degrees to radians. */
-    private fun toRadians(degrees: Double): Double = degrees * Math.PI / 180
-
-    /** Converts from radians to degrees. */
-    private fun toDegrees(radians: Double): Double = radians * 180 / Math.PI
-
-    private fun getAndDrawDirections(start: Space, end: Space) {
-        mapView.paths.removeAll()
-
-        mapView.mapData.getDirections(
-
-            NavigationTarget.SpaceTarget(start),
-            NavigationTarget.SpaceTarget(end),
-            // GetDirectionsOptions(accessible = true),
-        ) { result ->
-            result.onSuccess { directions ->
-                if (directions != null) {
-                    currentDirections = directions
-
-                    mapView.navigation.draw(directions) { drawResult ->
-                        drawResult.onSuccess {
-                            showTurnByTurnDialog(directions)
-                        }
-                        drawResult.onFailure {
-                            Log.e("Mappedin", "Failed to draw navigation", it)
-                        }
-                    }
-                }
-            }
-
-            result.onFailure {
-                Log.e("Mappedin", "Failed to get directions", it)
-            }
-        }
-    }
-
-    private fun formatInstruction(instruction: Any): String {
-        return instruction.toString()
-    }
-
-    private fun buildInstructionText(directions: Directions): List<String> {
-        val instructions = directions.instructions
-        val steps = mutableListOf<String>()
-
-        for (i in instructions.indices) {
-
-            val instruction = instructions[i]
-            val nextInstruction =
-                if (i < instructions.size - 1) instructions[i + 1] else null
-
-            val distance = nextInstruction?.distance?.toInt() ?: 0
-
-            val type = instruction.action.type.name
-            val bearing = instruction.action.bearing?.name
-
-            // Skip useless tiny steps
-            if (distance < 1 && type == "TURN") continue
-
-
-            val text = when (type) {
-
-                "DEPARTURE" ->
-                    "Start and go $distance meters"
-
-                "TURN" -> {
-                    val direction = when {
-                        bearing?.contains("RIGHT") == true -> "Turn right"
-                        bearing?.contains("LEFT") == true -> "Turn left"
-                        else -> "Continue"
-                    }
-
-                    "$direction and go $distance meters"
-                }
-
-                "TAKE_CONNECTION" ->
-                    "Take the stairs or elevator"
-
-                "EXIT_CONNECTION" ->
-                    "Exit the stairs or elevator"
-
-                "ARRIVAL" ->
-                    "You have arrived"
-
-                else ->
-                    "Continue for $distance meters"
-            }
-
-            steps.add("${steps.size + 1}. $text")
-        }
-
-        return steps
-    }
-
-    private fun showTurnByTurnDialog(directions: Directions) {
-        val steps = buildInstructionText(directions)
-
-        AlertDialog.Builder(this)
-            .setTitle("Turn-by-Turn Directions")
-            .setMessage(steps.joinToString("\n\n"))
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    //start navigation window
-    private fun showNavigationDialog() {
-        val roomNames = allSpaces
-            .map { it.name }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 40, 40, 40)
-        }
-        //start room
-        val startInput = AutoCompleteTextView(this).apply {
-            hint = "Start room"
-            setAdapter(
-                ArrayAdapter(
-                    this@MapActivity,
-                    android.R.layout.simple_dropdown_item_1line,
-                    roomNames
-                )
-            )
-        }
-        //destination
-        val endInput = AutoCompleteTextView(this).apply {
-            hint = "Destination room"
-            setAdapter(
-                ArrayAdapter(
-                    this@MapActivity,
-                    android.R.layout.simple_dropdown_item_1line,
-                    roomNames
-                )
-            )
-        }
-
-        //preload previous choices
-        startSpace?.let { startInput.setText(it.name) }
-        endSpace?.let { endInput.setText(it.name) }
-
-        layout.addView(startInput)
-        layout.addView(endInput)
-
-        AlertDialog.Builder(this)
-            .setTitle("Start Navigation")
-            .setView(layout)
-            .setPositiveButton("Start") { _, _ ->
-                val startName = startInput.text.toString().trim()
-                val endName = endInput.text.toString().trim()
-
-                val selectedStart = allSpaces.find {
-                    it.name.equals(startName, ignoreCase = true)
-                }
-
-                val selectedEnd = allSpaces.find {
-                    it.name.equals(endName, ignoreCase = true)
-                }
-
-                if (selectedStart == null || selectedEnd == null) {
-                    Log.e("Mappedin", "Could not find selected spaces")
-                    return@setPositiveButton
-                }
-
-                if (selectedStart == selectedEnd) {
-                    Log.e("Mappedin", "Start and destination are the same")
-                    return@setPositiveButton
-                }
-
-                startSpace = selectedStart
-                endSpace = selectedEnd
-
-                getAndDrawDirections(selectedStart, selectedEnd)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
 }
-
-
-/*
-        // Get all floor stacks
-        mapView.mapData.getByType<FloorStack>(MapDataType.FLOOR_STACK) { result ->
-            result.onSuccess { stacks ->
-                floorStacks = stacks?.sortedBy { it.name } ?: emptyList()
-
-                // Get all floors
-                mapView.mapData.getByType<Floor>(MapDataType.FLOOR) { floorsResult ->
-                    floorsResult.onSuccess { floors ->
-                        allFloors = floors ?: emptyList()
-                        Log.d("MappedinDemo", "Floors: $floors")
-                    }
-                }
-            }
-        }
-
-   // }
-   */
