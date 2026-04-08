@@ -55,6 +55,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var mapView: MapView
     private lateinit var loadingIndicator: ProgressBar
     private lateinit var floorSwitcherLayout: LinearLayout
+    private var mapReady = false
 
     private var allSpaces: List<Space> = emptyList()
 
@@ -214,7 +215,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         return container
     }
 
-    //my location FAB
+    //location
     private fun buildLocationButton(container: FrameLayout) {
         myLocationButton = FloatingActionButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_mylocation)
@@ -482,6 +483,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         blueDotManager = BlueDotManager(mapView)
         navigationManager = NavigationManager(this, mapView)
 
+        mapReady = true
+
         //make doors visible
         mapView.updateState(
             Doors.INTERIOR,
@@ -537,11 +540,11 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         //load floors
         mapView.mapData.getByType<Floor>(MapDataType.FLOOR) { result ->
             result.onSuccess { floors ->
+                floors.forEachIndexed { index, floor ->
+                    Log.d("Floors", "index=$index name=${floor.name} id=${floor.id}")
+                }
                 floorManager.setFloors(floors)
                 runOnUiThread { buildFloorSwitcher() }
-            }
-            result.onFailure {
-                Log.e("Mappedin", "failed to load floors", it)
             }
         }
 
@@ -632,10 +635,10 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         }
 
         //switch to correct floor
-        val spaceFloor = space.floor
-        if (spaceFloor != null && floorManager.currentFloor?.id != spaceFloor.id) {
-            floorManager.switchToFloor(spaceFloor)
-        }
+        //val spaceFloor = space.floor
+        //if (spaceFloor != null && floorManager.currentFloor?.id != spaceFloor.id) {
+        //    floorManager.switchToFloor(spaceFloor)
+        //}
 
         //clear old highlight before setting new one
 
@@ -694,16 +697,21 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     override fun onLocationChanged(location: IALocation) {
         lastLocation = location
 
-        Log.d("BlueDot", "IA location: lat=${location.latitude}, lon=${location.longitude}, " +
-                "floor=${location.floorLevel}, accuracy=${location.accuracy}")
-
-        val mappedFloor = floorManager.findFloorForLevel(location.floorLevel)
-
-        if (mappedFloor == null) {
-            Log.w("BlueDot", "No Mappedin floor found for IA floorLevel=${location.floorLevel}. ")
+        if (!mapReady) {
+            Log.d("BlueDot", "Map not ready yet, skipping location update")
             return
         }
 
+        val mappedFloor = floorManager.findFloorForLevel(location.floorLevel)
+        if (mappedFloor == null) {
+            Log.w("BlueDot", "No Mappedin floor found for IA floorLevel=${location.floorLevel}")
+            return
+        }
+
+        Log.d(
+            "BlueDot",
+            "IA floorLevel=${location.floorLevel}, mappedFloor=${mappedFloor.name}"
+        )
         if (floorManager.currentFloor?.id != mappedFloor.id) {
             floorManager.switchToFloor(mappedFloor)
         }

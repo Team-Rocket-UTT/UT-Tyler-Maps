@@ -16,6 +16,9 @@ class IndoorAtlasActivity : AppCompatActivity(), IALocationListener {
 
     private lateinit var iaLocationManager: IALocationManager
 
+    private var lastUpdateTime = 0L
+
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
             val granted = results.values.all { it }
@@ -90,12 +93,20 @@ class IndoorAtlasActivity : AppCompatActivity(), IALocationListener {
     }
 
     override fun onLocationChanged(location: IALocation) {
-        val lat = location.latitude
-        val lon = location.longitude
-        val floor = location.floorLevel
-        val accuracy = location.accuracy
+        val now = System.currentTimeMillis()
 
-        Log.d("IndoorAtlas", "lat=$lat lon=$lon floor=$floor acc=$accuracy")
+        if (now - lastUpdateTime > 1000) {
+            lastUpdateTime = now
+
+            val lat = location.latitude
+            val lon = location.longitude
+            val floor = location.floorLevel
+            val accuracy = location.accuracy
+
+            Log.d("IndoorAtlas", "lat=$lat lon=$lon floor=$floor acc=$accuracy")
+
+        }
+
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {

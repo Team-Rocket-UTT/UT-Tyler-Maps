@@ -41,8 +41,8 @@ class FloorManager(private val mapView: MapView) {
     fun findFloorForLevel(floorLevel: Int): Floor? {
         //change these to match your mappedin floor names
         val floorName = when (floorLevel) {
-            0 -> "First Floor"
-            1 -> "Second Floor"
+            1 -> "First Floor"
+            2 -> "Second Floor"
             else -> return null
         }
 
