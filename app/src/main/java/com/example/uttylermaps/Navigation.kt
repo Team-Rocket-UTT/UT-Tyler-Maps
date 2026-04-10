@@ -1,189 +1,257 @@
 package com.example.uttylermaps
 
-import android.app.AlertDialog
-import android.content.Context
 import android.util.Log
-import android.widget.ArrayAdapter
-import android.widget.AutoCompleteTextView
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.graphics.toColorInt
 import com.mappedin.MapView
+import com.mappedin.models.Coordinate
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
 import com.mappedin.models.Space
 
-//handles the navigation dialog and drawing directions on the map
 class NavigationManager(
-    private val context: Context,
-    private val mapView: MapView
+    private val activity: MapActivity,
+    private val mapView: MapView,
+    private val container: FrameLayout,
+    private val isDark: Boolean,
 ) {
-    //save previous choices so they show up next time
-    var startSpace: Space? = null
-    var endSpace: Space? = null
+    private var infoPanel: LinearLayout? = null
+    private var navigationPanel: LinearLayout? = null
+    var isNavigating = false
+        private set
 
-    //start navigation window
-    fun showNavigationDialog(allSpaces: List<Space>) {
-        val roomNames = allSpaces
-            .map { it.name }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
+    private val bgColor get() = if (isDark) "#1E1E1E".toColorInt() else android.graphics.Color.WHITE
+    private val textColor get() = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
 
-        val layout = LinearLayout(context).apply {
+    // Show room info when user taps a space
+    fun showSpaceInfoPanel(space: Space, hasLocation: Boolean, onDirections: () -> Unit) {
+        dismissInfoPanel()
+        dismissNavigationPanel()
+
+        infoPanel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(40, 40, 40, 40)
-        }
-        //start room
-        val startInput = AutoCompleteTextView(context).apply {
-            hint = "Start room"
-            setAdapter(
-                ArrayAdapter(
-                    context,
-                    android.R.layout.simple_dropdown_item_1line,
-                    roomNames
-                )
-            )
-        }
-        //destination
-        val endInput = AutoCompleteTextView(context).apply {
-            hint = "Destination room"
-            setAdapter(
-                ArrayAdapter(
-                    context,
-                    android.R.layout.simple_dropdown_item_1line,
-                    roomNames
-                )
-            )
-        }
-
-        //preload previous choices
-        startSpace?.let { startInput.setText(it.name) }
-        endSpace?.let { endInput.setText(it.name) }
-
-        layout.addView(startInput)
-        layout.addView(endInput)
-
-        AlertDialog.Builder(context)
-            .setTitle("Start Navigation")
-            .setView(layout)
-            .setPositiveButton("Start") { _, _ ->
-                val startName = startInput.text.toString().trim()
-                val endName = endInput.text.toString().trim()
-
-                val selectedStart = allSpaces.find {
-                    it.name.equals(startName, ignoreCase = true)
-                }
-
-                val selectedEnd = allSpaces.find {
-                    it.name.equals(endName, ignoreCase = true)
-                }
-
-                if (selectedStart == null || selectedEnd == null) {
-                    Log.e("Navigation", "Could not find selected spaces")
-                    return@setPositiveButton
-                }
-
-                if (selectedStart == selectedEnd) {
-                    Log.e("Navigation", "Start and destination are the same")
-                    return@setPositiveButton
-                }
-
-                startSpace = selectedStart
-                endSpace = selectedEnd
-
-                getAndDrawDirections(selectedStart, selectedEnd)
+            setPadding(48, 36, 48, 36)
+            elevation = 24f
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadii = floatArrayOf(32f, 32f, 32f, 32f, 0f, 0f, 0f, 0f)
+                setColor(bgColor)
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+
+            addView(TextView(activity).apply {
+                text = space.name
+                setTextColor(this@NavigationManager.textColor)
+                textSize = 20f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            })
+
+            if (hasLocation) {
+                addView(Button(activity).apply {
+                    text = "Directions"
+                    setTextColor(android.graphics.Color.WHITE)
+                    isAllCaps = false
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = 24f
+                        setColor("#2563EB".toColorInt())
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = 24 }
+                    setOnClickListener { onDirections() }
+                })
+            }
+
+            addView(Button(activity).apply {
+                text = "Close"
+                isAllCaps = false
+                setTextColor(this@NavigationManager.textColor)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 8
+                    bottomMargin = 120
+                }
+                setOnClickListener { dismissInfoPanel() }
+            })
+        }
+
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM }
+
+        container.addView(infoPanel, params)
     }
 
-    private fun getAndDrawDirections(start: Space, end: Space) {
-        mapView.paths.removeAll()
+    fun dismissInfoPanel() {
+        infoPanel?.let { container.removeView(it) }
+        infoPanel = null
+    }
+
+    // Start navigation from user's location to a space
+    fun navigateTo(destination: Space, userLat: Double, userLon: Double, floorId: String) {
+        dismissInfoPanel()
+
+        Log.d("Navigation", "Routing from ($userLat, $userLon) floor=$floorId to ${destination.name} floor=${destination.floor}")
+
+        // Always try CoordinateTarget first
+        val origin = NavigationTarget.CoordinateTarget(
+            Coordinate(userLat, userLon, )
+        )
+
+        mapView.mapData.getDirections(origin, NavigationTarget.SpaceTarget(destination)) { result ->
+            result.onSuccess { directions ->
+                if (directions != null) {
+                    Log.d("Navigation", "Got directions! distance=${directions.distance}")
+                    drawNavigation(destination, directions)
+                } else {
+                    Log.w("Navigation", "CoordinateTarget returned null, trying SpaceTarget fallback")
+                    // Fallback: try nearest space including ones without names
+                    fallbackNavigate(destination, userLat, userLon, floorId)
+                }
+            }
+            result.onFailure {
+                Log.e("Navigation", "CoordinateTarget failed, trying fallback", it)
+                fallbackNavigate(destination, userLat, userLon, floorId)
+            }
+        }
+    }
+
+    private fun fallbackNavigate(destination: Space, userLat: Double, userLon: Double, floorId: String) {
+        // Include ALL spaces on this floor, even unnamed ones
+        val nearestSpace = activity.allSpaces
+            .filter { it.floor == floorId }
+            .minByOrNull { space ->
+                val dLat = (space.center?.latitude ?: 0.0) - userLat
+                val dLon = (space.center?.longitude ?: 0.0) - userLon
+                dLat * dLat + dLon * dLon
+            }
+
+        if (nearestSpace == null) {
+            Log.e("Navigation", "No space found on floor $floorId")
+            activity.runOnUiThread {
+                android.widget.Toast.makeText(activity, "No route found", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        Log.d("Navigation", "Fallback using space: '${nearestSpace.name}' id=${nearestSpace.id}")
 
         mapView.mapData.getDirections(
-            NavigationTarget.SpaceTarget(start),
-            NavigationTarget.SpaceTarget(end),
-            // GetDirectionsOptions(accessible = true),
+            NavigationTarget.SpaceTarget(nearestSpace),
+            NavigationTarget.SpaceTarget(destination)
         ) { result ->
             result.onSuccess { directions ->
                 if (directions != null) {
-
-                    mapView.navigation.draw(directions) { drawResult ->
-                        drawResult.onSuccess {
-                            showTurnByTurnDialog(directions)
-                        }
-                        drawResult.onFailure {
-                            Log.e("Navigation", "Failed to draw navigation", it)
-                        }
+                    drawNavigation(destination, directions)
+                } else {
+                    activity.runOnUiThread {
+                        android.widget.Toast.makeText(activity, "No route found to ${destination.name}", android.widget.Toast.LENGTH_SHORT).show()
                     }
                 }
             }
-
             result.onFailure {
-                Log.e("Navigation", "Failed to get directions", it)
+                Log.e("Navigation", "Fallback also failed", it)
             }
         }
     }
 
-    private fun showTurnByTurnDialog(directions: Directions) {
-        val steps = buildInstructionText(directions)
+    private fun drawNavigation(destination: Space, directions: Directions) {
+        mapView.navigation.clear()
+        mapView.paths.removeAll()
 
-        AlertDialog.Builder(context)
-            .setTitle("Turn-by-Turn Directions")
-            .setMessage(steps.joinToString("\n\n"))
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    private fun buildInstructionText(directions: Directions): List<String> {
-        val instructions = directions.instructions
-        val steps = mutableListOf<String>()
-
-        for (i in instructions.indices) {
-
-            val instruction = instructions[i]
-            val nextInstruction =
-                if (i < instructions.size - 1) instructions[i + 1] else null
-
-            val distance = nextInstruction?.distance?.toInt() ?: 0
-
-            val type = instruction.action.type.name
-            val bearing = instruction.action.bearing?.name
-
-            // Skip useless tiny steps
-            if (distance < 1 && type == "TURN") continue
-
-
-            val text = when (type) {
-
-                "DEPARTURE" ->
-                    "Start and go $distance meters"
-
-                "TURN" -> {
-                    val direction = when {
-                        bearing?.contains("RIGHT") == true -> "Turn right"
-                        bearing?.contains("LEFT") == true -> "Turn left"
-                        else -> "Continue"
-                    }
-
-                    "$direction and go $distance meters"
+        mapView.navigation.draw(directions) { drawResult ->
+            drawResult.onSuccess {
+                isNavigating = true
+                activity.runOnUiThread {
+                    showNavigationPanel(destination, directions.distance)
                 }
+            }
+            drawResult.onFailure {
+                Log.e("Navigation", "Failed to draw", it)
+            }
+        }
+    }
 
-                "TAKE_CONNECTION" ->
-                    "Take the stairs or elevator"
+    private fun showNavigationPanel(destination: Space, distance: Double) {
+        dismissNavigationPanel()
 
-                "EXIT_CONNECTION" ->
-                    "Exit the stairs or elevator"
+        val distanceText = if (distance < 1000) "${distance.toInt()}m"
+        else "${"%.1f".format(distance / 1000)}km"
 
-                "ARRIVAL" ->
-                    "You have arrived"
-
-                else ->
-                    "Continue for $distance meters"
+        navigationPanel = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 36, 48, 36)
+            elevation = 24f
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadii = floatArrayOf(32f, 32f, 32f, 32f, 0f, 0f, 0f, 0f)
+                setColor(bgColor)
             }
 
-            steps.add("${steps.size + 1}. $text")
+            addView(TextView(activity).apply {
+                text = "Navigating to ${destination.name}"
+                setTextColor(this@NavigationManager.textColor)
+                textSize = 18f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            })
+
+            addView(TextView(activity).apply {
+                text = distanceText
+                setTextColor(if (isDark) "#AAAAAA".toColorInt() else "#666666".toColorInt())
+                textSize = 14f
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 8 }
+            })
+
+            addView(Button(activity).apply {
+                text = "Stop Navigation"
+                isAllCaps = false
+                setTextColor(android.graphics.Color.WHITE)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 24f
+                    setColor("#DC2626".toColorInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 24 }
+                setOnClickListener { stopNavigation() }
+            })
         }
 
-        return steps
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+            bottomMargin = 180  // above the bottom nav bar
+        }
+        container.addView(navigationPanel, params)
+    }
+
+    private fun dismissNavigationPanel() {
+        navigationPanel?.let { container.removeView(it) }
+        navigationPanel = null
+    }
+
+    fun stopNavigation() {
+        mapView.navigation.clear()
+        mapView.paths.removeAll()
+        isNavigating = false
+        dismissNavigationPanel()
+    }
+
+    // Keep your existing showNavigationDialog if you still need it
+    fun showNavigationDialog(allSpaces: List<Space>) {
+        // your existing dialog code
     }
 }
