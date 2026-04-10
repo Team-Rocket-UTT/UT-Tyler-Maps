@@ -667,12 +667,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 floorManager.setFloors(floors)
                 runOnUiThread { buildFloorSwitcher() }
                 // fake blue dot AFTER floors exist
-                setFakeLocation(
-                    32.312980357481855,
-                    -95.25143314674958
-                )
-                val fakeFloor = floorManager.currentFloor ?: floors.firstOrNull()
-
             }
 
         }
