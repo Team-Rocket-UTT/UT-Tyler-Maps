@@ -8,25 +8,52 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.toColorInt
+import androidx.test.espresso.base.Default
 import com.mappedin.MapView
 import com.mappedin.models.Coordinate
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
+import com.mappedin.models.PathSectionHighlightOptions
 import com.mappedin.models.Space
+import com.mappedin.views.Navigation
+import org.json.JSONObject
+import com.mappedin.models.NavigationOptions
+import com.mappedin.models.AddPathOptions
 
 class NavigationManager(
     private val activity: MapActivity,
     private val mapView: MapView,
     private val container: FrameLayout,
     private val isDark: Boolean,
+
 ) {
     private var infoPanel: LinearLayout? = null
     private var navigationPanel: LinearLayout? = null
+    private var activeDestination: Space? = null
+    private var lastPathUpdateTime = 0L
+    private val PATH_UPDATE_INTERVAL = 4000L
+
+    private var currentDirections: Directions? = null
+    private var isRerouting = false
+    private var activeFloorId: String? = null
     var isNavigating = false
         private set
 
     private val bgColor get() = if (isDark) "#1E1E1E".toColorInt() else android.graphics.Color.WHITE
     private val textColor get() = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+
+    private val navOptions = NavigationOptions(
+        pathOptions = AddPathOptions(
+            color = "#4b90e2",
+            displayArrowsOnPath = true,
+            animateDrawing = true
+        ),
+        createMarkers = NavigationOptions.CreateMarkers.withCustomMarkers(
+            departure = NavigationOptions.CreateMarkers.CreateMarkerValue.CustomMarker(
+                template = """<div style="width:1px;height:1px;opacity:0;"></div>"""
+            )
+        )
+    )
 
     // Show room info when user taps a space
     fun showSpaceInfoPanel(space: Space, hasLocation: Boolean, onDirections: () -> Unit) {
@@ -99,26 +126,30 @@ class NavigationManager(
     fun navigateTo(destination: Space, userLat: Double, userLon: Double, floorId: String) {
         dismissInfoPanel()
 
-        Log.d("Navigation", "Routing from ($userLat, $userLon) floor=$floorId to ${destination.name} floor=${destination.floor}")
-
-        // Always try CoordinateTarget first
         val origin = NavigationTarget.CoordinateTarget(
-            Coordinate(userLat, userLon, )
+            Coordinate(userLat, userLon, floorId)
         )
 
         mapView.mapData.getDirections(origin, NavigationTarget.SpaceTarget(destination)) { result ->
             result.onSuccess { directions ->
                 if (directions != null) {
-                    Log.d("Navigation", "Got directions! distance=${directions.distance}")
-                    drawNavigation(destination, directions)
+                    currentDirections = directions
+                    activeDestination = destination
+                    activeFloorId = floorId
+                    isNavigating = true
+
+                    mapView.navigation.draw(directions, navOptions) { drawResult ->
+                        drawResult.onSuccess {
+                            activity.runOnUiThread {
+                                showNavigationPanel(destination, directions.distance)
+                            }
+                        }
+                    }
                 } else {
-                    Log.w("Navigation", "CoordinateTarget returned null, trying SpaceTarget fallback")
-                    // Fallback: try nearest space including ones without names
                     fallbackNavigate(destination, userLat, userLon, floorId)
                 }
             }
             result.onFailure {
-                Log.e("Navigation", "CoordinateTarget failed, trying fallback", it)
                 fallbackNavigate(destination, userLat, userLon, floorId)
             }
         }
@@ -167,8 +198,11 @@ class NavigationManager(
         mapView.navigation.clear()
         mapView.paths.removeAll()
 
-        mapView.navigation.draw(directions) { drawResult ->
+
+
+        mapView.navigation.draw(directions, navOptions) { drawResult ->
             drawResult.onSuccess {
+                activeDestination = destination
                 isNavigating = true
                 activity.runOnUiThread {
                     showNavigationPanel(destination, directions.distance)
@@ -248,6 +282,65 @@ class NavigationManager(
         mapView.paths.removeAll()
         isNavigating = false
         dismissNavigationPanel()
+        activeDestination = null
+    }
+
+    fun startLiveNavigation(destination: Space) {
+        activeDestination = destination
+        isNavigating = true
+    }
+
+
+
+    fun updateNavigationPath(userLat: Double, userLon: Double, floorId: String) {
+        val dest = activeDestination ?: return
+        if (!isNavigating) return
+        val directions = currentDirections ?: return
+
+        val coordinate = mapView.createCoordinate(
+            userLat,
+            userLon,
+            floorId
+        )
+
+        directions.coordinates.firstOrNull()?.let { firstCoordinate ->
+            mapView.navigation.highlightPathSection(
+                from = firstCoordinate,
+                to = coordinate,
+                options = PathSectionHighlightOptions(
+                    animationDuration = 0,
+                    color = "#9d9d9d",
+                    widthMultiplier = 1.1
+                )
+            )
+        }
+    }
+
+/*if (shouldReroute(userLat, userLon, floorId) && !isRerouting) {
+            rerouteToDestination(dest, userLat, userLon, floorId)
+        }
+        
+ */
+
+    private fun rerouteToDestination(destination: Space, userLat: Double, userLon: Double, floorId: String) {
+        if (isRerouting) return
+        isRerouting = true
+
+        val origin = NavigationTarget.CoordinateTarget(
+            Coordinate(userLat, userLon, floorId)
+        )
+
+        mapView.mapData.getDirections(origin, NavigationTarget.SpaceTarget(destination)) { result ->
+            isRerouting = false
+
+            result.onSuccess { directions ->
+                if (directions != null) {
+                    currentDirections = directions
+                    activeFloorId = floorId
+                    mapView.navigation.draw(directions) { }
+                }
+            }
+        }
     }
 
     // Keep your existing showNavigationDialog if you still need it
@@ -255,3 +348,6 @@ class NavigationManager(
         // your existing dialog code
     }
 }
+
+
+

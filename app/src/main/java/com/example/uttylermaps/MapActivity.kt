@@ -54,6 +54,7 @@ import androidx.core.view.marginRight
 import androidx.core.view.setPadding
 import androidx.core.view.isVisible
 import com.mappedin.models.Events
+import com.mappedin.models.FollowMode
 import com.mappedin.models.LabelUpdateState
 import com.mappedin.models.NavigationTarget
 
@@ -79,6 +80,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var iaLocationManager: IALocationManager
     private var lastLocation: IALocation? = null
     private var hasPermissions = false
+    var isFollowingUser = false
 
     //managers
     private lateinit var floorManager: FloorManager
@@ -288,7 +290,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         myLocationButton = FloatingActionButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_mylocation)
             backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt())
-            setOnClickListener { moveToUserLocation() }
+            setOnClickListener { enableFollowMode() }
         }
         val params = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -301,6 +303,29 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         container.addView(myLocationButton, params)
     }
 
+    private fun enableFollowMode() {
+        if (lastLocation == null) {
+            Log.e("FollowMode", "No location yet")
+            return
+        }
+
+        if (isFollowingUser) {
+            // Turn off follow mode
+            mapView.blueDot.follow(mode = null)
+            isFollowingUser = false
+            myLocationButton.backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt()) // green = idle
+        } else {
+            // Turn on follow mode
+            val mode = if (navigationManager.isNavigating) {
+                FollowMode.POSITION_AND_PATH_DIRECTION
+            } else {
+                FollowMode.POSITION_ONLY
+            }
+            mapView.blueDot.follow(mode)
+            isFollowingUser = true
+            myLocationButton.backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt()) // blue = following
+        }
+    }
     //navigation FAB
     private fun buildNavButton(container: FrameLayout) {
         startNavButton = FloatingActionButton(this).apply {
@@ -773,12 +798,20 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         //to track tapping away
         mapView.view.setOnTouchListener { _, _ ->
+            // Disable follow mode on manual interaction
+
+            if (isFollowingUser) {
+                isFollowingUser = false
+                runOnUiThread {
+                    myLocationButton.backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt())
+                }
+            }
+
             topSearchView.clearFocus()
             searchResults.visibility = android.view.View.GONE
             val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
             imm.hideSoftInputFromWindow(mapView.view.windowToken, 0)
 
-            // Schedule reset with small delay - click event can cancel it
             resetRunnable?.let { resetHandler.removeCallbacks(it) }
             resetRunnable = Runnable {
                 resetHighlightedLabel()
@@ -879,7 +912,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         mapView.camera.animateTo(
             CameraTarget(
                 center = Coordinate(location.latitude, location.longitude),
-                zoomLevel = 60.0,
+                zoomLevel = 20.0,
                 pitch = 0.0
             ),
             CameraAnimationOptions(
@@ -1017,7 +1050,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             "IA floorLevel=${location.floorLevel}, mappedFloor=${mappedFloor.name}"
         )
         if (floorManager.currentFloor?.id != mappedFloor.id) {
-            floorManager.switchToFloor(mappedFloor)
+            //floorManager.switchToFloor(mappedFloor)
             runOnUiThread {
                 updateFloorButtonIcon(mappedFloor)
             }
@@ -1029,6 +1062,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             accuracy = location.accuracy.toDouble(),
             floor = mappedFloor
         )
+        if (navigationManager.isNavigating) {
+            navigationManager.updateNavigationPath(
+                location.latitude, location.longitude, mappedFloor.id
+            )
+        }
+
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
