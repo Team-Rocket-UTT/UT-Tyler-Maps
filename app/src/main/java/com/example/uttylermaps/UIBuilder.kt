@@ -40,9 +40,11 @@ class UIBuilder(
     lateinit var bottomNav: BottomNavigationView
     var filteredRooms: MutableList<String> = mutableListOf()
     var allSpaces: List<Space> = emptyList()
+    val searchHistory by lazy{ SearchHistory(activity)}
 
     private lateinit var floorChipGroup: LinearLayout
     private var floorChips = mutableMapOf<String, TextView>()
+
 
     // ── Initial layout (before map loads) ──
 
@@ -264,14 +266,13 @@ class UIBuilder(
         searchOverlay.addView(buildCategoryChips())
 
         filteredRooms = mutableListOf()
-        searchAdapter = SearchResultAdapter(activity, filteredRooms, isDark)
-
+        searchAdapter = SearchResultAdapter(activity, filteredRooms, isDark, searchHistory)
         searchResults = ListView(activity).apply {
             visibility = View.GONE
             val bg = if (isDark) "#303134".toColorInt() else "#FFFFFF".toColorInt()
             setBackgroundColor(bg)
             elevation = 8f
-            divider = null          // we handle dividers in the adapter
+            divider = null
             dividerHeight = 0
             adapter = searchAdapter
 
@@ -375,15 +376,14 @@ class UIBuilder(
             })
 
             setOnQueryTextFocusChangeListener { _, hasFocus ->
-                findViewById<TextView?>(androidx.appcompat.R.id.search_src_text)?.apply {
-                    isCursorVisible = hasFocus
-                }
-                if (!hasFocus) {
+                if (hasFocus && query.isNullOrEmpty()) {
+                    // Show search history
+                    filteredRooms.clear()
+                    filteredRooms.addAll(searchHistory.getHistory())
+                    searchAdapter.notifyDataSetChanged()
+                    searchResults.visibility = if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
+                } else if (!hasFocus) {
                     searchResults.visibility = View.GONE
-                } else {
-                    if (query.isNotEmpty() && filteredRooms.isNotEmpty()) {
-                        searchResults.visibility = View.VISIBLE
-                    }
                 }
             }
         }

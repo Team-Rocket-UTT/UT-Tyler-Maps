@@ -25,9 +25,10 @@ class NavigationActivity : AppCompatActivity() {
     private lateinit var destInput: EditText
     private lateinit var resultsList: ListView
     private lateinit var startButton: Button
+    private lateinit var searchHistory: SearchHistory
 
     private val filteredNames = mutableListOf<String>()
-    private lateinit var adapter: ArrayAdapter<String>
+    private lateinit var adapter: android.widget.BaseAdapter
     private var roomNames: List<String> = emptyList()
     private var isSwapping = false
 
@@ -42,11 +43,41 @@ class NavigationActivity : AppCompatActivity() {
         roomNames = intent.getStringArrayListExtra("room_names") ?: emptyList()
         val prefillDest = intent.getStringExtra("prefill_dest")
 
-        adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_list_item_1,
-            filteredNames
-        )
+        adapter = object : android.widget.BaseAdapter() {
+            override fun getCount() = filteredNames.size
+            override fun getItem(position: Int) = filteredNames[position]
+            override fun getItemId(position: Int) = position.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val textColor = if (isDark) "#E8EAED".toColorInt() else "#202124".toColorInt()
+                val iconColor = if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt()
+                val name = filteredNames[position]
+                val isHistory = searchHistory.getHistory().contains(name)
+
+                return LinearLayout(this@NavigationActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(36, 28, 36, 28)
+
+                    if (isHistory) {
+                        addView(android.widget.ImageView(this@NavigationActivity).apply {
+                            setImageResource(R.drawable.history)
+                            setColorFilter(iconColor)
+                            layoutParams = LinearLayout.LayoutParams(48, 48).apply {
+                                marginEnd = 24
+                            }
+                        })
+                    }
+
+                    addView(android.widget.TextView(this@NavigationActivity).apply {
+                        text = name
+                        textSize = 16f
+                        setTextColor(textColor)
+                    })
+                }
+            }
+        }
+        searchHistory = SearchHistory(this)
 
         setContentView(buildLayout())
 
@@ -163,6 +194,12 @@ class NavigationActivity : AppCompatActivity() {
             setOnFocusChangeListener { _, hasFocus ->
                 if (hasFocus) {
                     editingOrigin = false
+                    if (text.toString().isBlank()) {
+                        filteredNames.clear()
+                        filteredNames.addAll(searchHistory.getHistory())
+                        adapter.notifyDataSetChanged()
+                        resultsList.visibility = if (filteredNames.isEmpty()) View.GONE else View.VISIBLE
+                    }
                 }
             }
         }
@@ -213,22 +250,6 @@ class NavigationActivity : AppCompatActivity() {
                 bottomMargin = 20
             }
         )
-
-        resultsList = ListView(this).apply {
-            visibility = View.GONE
-            dividerHeight = 0
-            setBackgroundColor(bgColor)
-            adapter = this@NavigationActivity.adapter
-        }
-        root.addView(
-            resultsList,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
         startButton = Button(this).apply {
             text = "Start Navigation"
             isAllCaps = false
@@ -244,11 +265,10 @@ class NavigationActivity : AppCompatActivity() {
             alpha = 0.6f
             setOnClickListener {
                 if (selectedDest == null) return@setOnClickListener
-                if(selectedOrigin == selectedDest){
+                if (selectedOrigin == selectedDest) {
                     android.widget.Toast.makeText(this@NavigationActivity, "Cannot find route between the same rooms", android.widget.Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-
                 val result = Intent().apply {
                     putExtra("origin_room", selectedOrigin)
                     putExtra("dest_room", selectedDest)
@@ -264,15 +284,34 @@ class NavigationActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 topMargin = 20
+                bottomMargin = 12
             }
         )
+
+        resultsList = ListView(this).apply {
+            visibility = View.VISIBLE
+            dividerHeight = 0
+            setBackgroundColor(bgColor)
+            adapter = this@NavigationActivity.adapter
+        }
+        root.addView(
+            resultsList,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+
+
 
         val watcher = object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {}
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                if(isSwapping) return//dont listen if swapping fields
+                if (isSwapping) return
                 val q = s?.toString()?.trim()?.lowercase() ?: ""
 
                 filteredNames.clear()
@@ -280,10 +319,12 @@ class NavigationActivity : AppCompatActivity() {
                     filteredNames.addAll(
                         roomNames.filter { it.lowercase().contains(q) }.take(10)
                     )
+                } else {
+                    filteredNames.addAll(searchHistory.getHistory())
                 }
 
                 adapter.notifyDataSetChanged()
-                resultsList.visibility = if (filteredNames.isEmpty()) View.GONE else View.VISIBLE
+                resultsList.visibility = View.VISIBLE  // always visible
             }
         }
 
@@ -292,6 +333,7 @@ class NavigationActivity : AppCompatActivity() {
 
         resultsList.setOnItemClickListener { _, _, position, _ ->
             val picked = filteredNames[position]
+            searchHistory.addSearch(picked)
 
             if (editingOrigin) {
                 selectedOrigin = picked
@@ -304,9 +346,11 @@ class NavigationActivity : AppCompatActivity() {
                 destInput.clearFocus()
             }
 
+            // Show history again instead of hiding
             filteredNames.clear()
+            filteredNames.addAll(searchHistory.getHistory())
             adapter.notifyDataSetChanged()
-            resultsList.visibility = View.GONE
+            resultsList.visibility = View.VISIBLE
             updateStartButton()
         }
 

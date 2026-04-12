@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.app.Activity
 import androidx.activity.result.contract.ActivityResultContracts
 import com.mappedin.models.Space
+import com.mappedin.models.ConnectionType
 import androidx.appcompat.app.AppCompatActivity
 import com.mappedin.MapView
 import com.mappedin.models.AddLabelOptions
@@ -54,9 +55,15 @@ import android.widget.TextView
 import androidx.core.view.marginRight
 import androidx.core.view.setPadding
 import androidx.core.view.isVisible
+import com.indooratlas.android.sdk._internal.f
+import com.mappedin.models.AddMarkerOptions
+import com.mappedin.models.CollisionRankingTier
+import com.mappedin.models.Connection
 import com.mappedin.models.Events
+import com.mappedin.models.FloorUpdateState
 import com.mappedin.models.FollowMode
 import com.mappedin.models.LabelUpdateState
+import com.mappedin.models.MarkerPlacement
 import com.mappedin.models.NavigationTarget
 
 //from https://developer.mappedin.com/android-sdk
@@ -82,11 +89,14 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var blueDotManager: BlueDotManager
     private lateinit var navigationManager: NavigationManager
 
+
     private var isDark = false
 
     private val prefs by lazy {
         androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
     }
+
+    private val annotationMarkerMap = mutableMapOf<String, com.mappedin.models.Annotation>()
 
     private val navLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -661,32 +671,151 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
         }
+        // Define SVG icons for each category
+        val restroomIcon = """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+          <path d="M5.5 22v-7.5H4V9c0-1.1.9-2 2-2h3c1.1 0 2 .9 2 2v5.5H9.5V22h-4zm12.5 0v-6h3l-2.54-7.63C18.18 7.55 17.42 7 16.56 7h-.12c-.86 0-1.63.55-1.9 1.37L12 16h3v6h3zM7.5 6c1.11 0 2-.89 2-2s-.89-2-2-2-2 .89-2 2 .89 2 2 2zm9 0c1.11 0 2-.89 2-2s-.89-2-2-2-2 .89-2 2 .89 2 2 2z"/>
+        </svg>
+        """
+
+        val elevatorIcon = """
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 8H17C17.5523 8 18 8.44772 18 9V19C18 19.5523 17.5523 20 17 20H12M12 8H7C6.44772 8 6 8.44772 6 9V19C6 19.5523 6.44772 20 7 20H12M12 8V20M7.5 4.5L9 3L10.5 4.5M13.5 3L15 4.5L16.5 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
+"""
+
+        val stairsIcon ="""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+
+
+
+
+
+
 
         //add labels to rooms
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
                 for (space in spaces) {
                     if (space.name.isNotEmpty()) {
-                        val appearance = if (space.name.contains("Restroom")) {
-                            LabelAppearance(color = "#4e7498")
-                        } else {
-                            LabelAppearance()
+                        val isAmenity = space.name.contains("Restroom", ignoreCase = true) ||
+                            space.name.contains("Elevator", ignoreCase = true) ||
+                            space.name.contains("Stair", ignoreCase = true)
+
+                        val icon = when {
+                            space.name.contains("Restroom", ignoreCase = true) -> restroomIcon
+                            space.name.contains("Elevator", ignoreCase = true) -> elevatorIcon
+                            space.name.contains("Stair", ignoreCase = true) -> stairsIcon
+                            else -> null
+                        }
+                        val bgColor = when {
+                            space.name.contains("Restroom", ignoreCase = true) -> "#4e7498"
+                            space.name.contains("Elevator", ignoreCase = true) -> "#15803D"
+                            space.name.contains("Stair", ignoreCase = true) -> "#15803D"
+                            else -> null
                         }
 
-                        mapView.labels.add(
-                            target = space,
-                            text = space.name,
-                            options = AddLabelOptions(
-                                labelAppearance = appearance,
-                                interactive = true
-                            ),
-                        ) { result ->
-                            result.onSuccess { label ->
-                                if (label != null) {
-                                    labelMap[space.name] = label
+                        if (isAmenity && icon != null) {
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = LabelAppearance(
+                                        icon = icon,
+                                        color = bgColor,
+                                        iconVisibleAtZoomLevel = .7
+                                    ),
+                                    interactive = true,
+                                    rank = if(isAmenity) CollisionRankingTier.HIGH else null
+                                ),
+                            ) { result ->
+                                result.onSuccess { label ->
+                                    if (label != null) labelMap[space.name] = label
+                                }
+                            }
+                        } else {
+                            // Regular room just text label
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = LabelAppearance(),
+                                    interactive = true,
+                                ),
+                            ) { result ->
+                                result.onSuccess { label ->
+                                    if (label != null) labelMap[space.name] = label
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+
+
+
+        //add safety annotations
+        mapView.mapData.getByType<com.mappedin.models.Annotation>(MapDataType.ANNOTATION) { result ->
+            result.onSuccess { annotations ->
+                for (annotation in annotations) {
+                    val coord = annotation.coordinate ?: continue
+                    val iconUrl = annotation.icon?.url
+
+                    val iconHtml = if (iconUrl != null) {
+                        """<img src="$iconUrl" width="28" height="28" style="display:block;"/>"""
+                    } else {
+                                """<div style="background:red;color:white;border-radius:50%;
+                    width:28px;height:28px;display:flex;align-items:center;
+                    justify-content:center;font-size:14px;">⚠</div>"""
+                    }
+
+                    mapView.markers.add(
+                        target = coord,
+                        html = iconHtml,
+                        options = com.mappedin.models.AddMarkerOptions(
+                            interactive = AddMarkerOptions.Interactive.True,
+                            rank = AddMarkerOptions.Rank.Tier(CollisionRankingTier.MEDIUM)
+
+                        )
+                    ) { markerResult ->
+                        markerResult.onSuccess { marker ->
+                            if (marker != null) {
+                                annotationMarkerMap[marker.id] = annotation
+
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val stairsSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+
+        val elevatorSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
+
+
+        mapView.mapData.getByType<com.mappedin.models.Connection>(MapDataType.CONNECTION) { result ->
+            result.onSuccess { connections ->
+                for (connection in connections) {
+                    val icon = if (connection.type == Connection.ConnectionType.STAIRS) {
+                        """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+                    } else {
+                        """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
+                    }
+
+                    connection.coordinates.forEach { coordinate ->
+                        mapView.labels.add(
+                            target = coordinate,
+                            text = "",
+                            options = AddLabelOptions(
+                                labelAppearance = LabelAppearance(
+                                    color = "#15803D",
+                                    icon = icon,
+
+                                ),
+                                rank = CollisionRankingTier.MEDIUM
+                            )
+                        )
                     }
                 }
             }
@@ -703,6 +832,19 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                     floorManager.currentFloor?.let { ui.highlightFloor(it) }
                 }
             }
+
+            result.onSuccess { floors ->
+                for (floor in floors) {
+                    mapView.updateState(
+                        floor,
+                        FloorUpdateState(
+                            markers = FloorUpdateState.Markers(enabled = true)
+                        )
+                    )
+                }
+            }
+
+
         }
 
 
@@ -736,6 +878,23 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 ?: payload?.labels?.firstOrNull()?.let { label ->
                     allSpaces.find { it.name == label.text }
                 }
+
+            val clickedMarker = payload?.markers?.firstOrNull()
+            if (clickedMarker != null) {
+                // Find which annotation this marker belongs to
+                val markerId = clickedMarker.id
+                val annotation = annotationMarkerMap[markerId]
+                if (annotation != null) {
+                    runOnUiThread {
+                        android.widget.Toast.makeText(
+                            this,
+                            "${annotation.type} (${annotation.group})",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@on
+                }
+            }
 
             Log.d("Highlight", "clickedSpace: ${clickedSpace?.name ?: "null"}, highlighted: ${highlightedLabelSpace?.name ?: "null"}")
 
@@ -945,6 +1104,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
     //zoom to a room when user picks one from search
     private fun navigateToRoom(roomName: String) {
+        ui.searchHistory.addSearch(roomName)
         val space = allSpaces.find {
             it.name.equals(roomName, ignoreCase = true)
         }
