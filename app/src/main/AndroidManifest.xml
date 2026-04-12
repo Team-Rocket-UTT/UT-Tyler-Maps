@@ -51,6 +51,7 @@
         </activity>
 
         <activity android:name=".SearchActivity" />
+        <activity android:name=".NavigationActivity" />
 
     </application>
 

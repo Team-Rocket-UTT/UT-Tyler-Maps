@@ -28,6 +28,21 @@
             app:useSimpleSummaryProvider="true" />
 
     </PreferenceCategory>
+    <PreferenceCategory app:title="Navigation">
+        <SwitchPreferenceCompat
+            app:key="accessible_routes"
+            app:title="Accessible routes"
+            app:summary="Prefer elevators and avoid stairs"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Map">
+        <SwitchPreferenceCompat
+            app:key="auto_floor_switch"
+            app:title="Auto switch floors"
+            app:summary="Change floor automatically based on your location"
+            app:defaultValue="true" />
+    </PreferenceCategory>
 <!--
     <PreferenceCategory app:title="@string/sync_header">
 

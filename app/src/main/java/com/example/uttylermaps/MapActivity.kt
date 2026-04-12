@@ -1,5 +1,6 @@
 package com.example.uttylermaps
 
+import com.example.uttylermaps.BuildConfig
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -61,89 +62,89 @@ import com.mappedin.models.NavigationTarget
 //from https://developer.mappedin.com/android-sdk
 class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var mapView: MapView
-    private lateinit var loadingIndicator: ProgressBar
-    private lateinit var floorButton: FloatingActionButton
-    private lateinit var floorMenu: LinearLayout
+    lateinit var ui: UIBuilder
+
     private var mapReady = false
-    private lateinit var container: FrameLayout
     var allSpaces: List<Space> = emptyList()
     private var highlightedLabelSpace: Space? = null
     private var resetRunnable: Runnable? = null
     private val resetHandler = Handler(Looper.getMainLooper())
     private val labelMap = mutableMapOf<String, com.mappedin.models.Label>()
 
-    //buttons
-    private lateinit var startNavButton: FloatingActionButton
-    private lateinit var myLocationButton: FloatingActionButton
-
-    //indoor atlas
+    // indoor atlas
     private lateinit var iaLocationManager: IALocationManager
     private var lastLocation: IALocation? = null
     private var hasPermissions = false
     var isFollowingUser = false
 
-    //managers
-    private lateinit var floorManager: FloorManager
+    // managers
+    lateinit var floorManager: FloorManager
     private lateinit var blueDotManager: BlueDotManager
     private lateinit var navigationManager: NavigationManager
 
-    //for searching
-    private lateinit var searchOverlay: LinearLayout
-    private lateinit var searchResults: ListView
-    private lateinit var searchAdapter: ArrayAdapter<String>
-    private lateinit var topSearchView: SearchView
-    private var ignoreNextQueryChange = false
-    private var filteredRooms: MutableList<String> = mutableListOf()
-    private val searchLauncher = registerForActivityResult(
+    private var isDark = false
+
+    private val prefs by lazy {
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+    }
+
+    private val navLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val roomName = result.data?.getStringExtra("selected_room")
-            if (roomName != null) {
-                navigateToRoom(roomName)
+            val originRoom = result.data?.getStringExtra("origin_room")
+            val destRoom = result.data?.getStringExtra("dest_room") ?: return@registerForActivityResult
+
+            val dest = allSpaces.find { it.name == destRoom } ?: return@registerForActivityResult
+            val accessible = prefs.getBoolean("accessible_routes", false)
+
+            if (originRoom != null) {
+                val origin = allSpaces.find { it.name == originRoom }
+                if (origin != null) {
+                    navigationManager.navigateFromSpace(origin, dest, accessible)
+                }
+            } else {
+                val loc = lastLocation
+                val floor = floorManager.currentFloor
+                if (loc == null || floor == null) {
+                    android.widget.Toast.makeText(this, "Waiting for location signal...", android.widget.Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                navigationManager.navigateTo(dest, loc.latitude, loc.longitude, floor.id, accessible)
             }
         }
     }
 
-    //track highlighted space so we can clear it
-    private var highlightedSpace: Space? = null
-
-    private var isDark = false
 
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
-
         super.onCreate(savedInstanceState)
-        isDark =
-            (resources.configuration.uiMode and
-                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+        isDark = (resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
 
         title = "Display a Map"
 
-        val container = setupUI()
-        setContentView(container)
 
-        //initialize IndoorAtlas
+        mapView = MapView(this)
+        ui = UIBuilder(this, isDark, mapView)
+        setContentView(ui.buildInitialLayout())
+
         iaLocationManager = IALocationManager.create(this)
 
-        //verify permissions are granted
-        val permissions = mutableListOf(
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-        )
-
+        val permissions = mutableListOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
             permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
         }
-
         requestPermissions(permissions.toTypedArray(), 0)
 
         loadMap()
     }
 
-    //build the whole layout programmatically
+    /*
+    //build the whole layout
     private fun setupUI(): FrameLayout {
         container = FrameLayout(this)
 
@@ -303,30 +304,24 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         container.addView(myLocationButton, params)
     }
 
-    private fun enableFollowMode() {
-        if (lastLocation == null) {
-            Log.e("FollowMode", "No location yet")
-            return
-        }
+     */
 
+    private fun enableFollowMode() {
+        if (lastLocation == null) return
         if (isFollowingUser) {
-            // Turn off follow mode
             mapView.blueDot.follow(mode = null)
             isFollowingUser = false
-            myLocationButton.backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt()) // green = idle
+            ui.setLocationButtonColor("#16A34A")
         } else {
-            // Turn on follow mode
-            val mode = if (navigationManager.isNavigating) {
-                FollowMode.POSITION_AND_PATH_DIRECTION
-            } else {
-                FollowMode.POSITION_ONLY
-            }
+            val mode = if (navigationManager.isNavigating)
+                FollowMode.POSITION_AND_PATH_DIRECTION else FollowMode.POSITION_ONLY
             mapView.blueDot.follow(mode)
             isFollowingUser = true
-            myLocationButton.backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt()) // blue = following
+            ui.setLocationButtonColor("#2563EB")
         }
     }
     //navigation FAB
+    /*
     private fun buildNavButton(container: FrameLayout) {
         startNavButton = FloatingActionButton(this).apply {
             size = FloatingActionButton.SIZE_NORMAL
@@ -579,41 +574,28 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     }
 
 
+     */
+
     private fun loadMap() {
-        val options =
-            GetMapDataWithCredentialsOptions(
-                key = "mik_WHm7lPemUXoBeBY0j5482076a",
-                secret = "mis_qGm14reCYjwNXATtwlqz4Zk29t48YRYpEHkrS2RzVdU94251086",
-                mapId = "696db8c80f54a6000bdca0ad",
-                viewId = if(isDark) "Ptix" else null
-            )
+        val options = GetMapDataWithCredentialsOptions(
+            key = BuildConfig.MAPPEDIN_KEY,
+            secret = BuildConfig.MAPPEDIN_SECRET,
+            mapId = BuildConfig.MAPPEDIN_MAP_ID,
+            viewId = if (isDark) "Ptix" else null
+        )
 
         mapView.getMapData(options) { result ->
-            result
-                .onSuccess {
-                    Log.d("Mappedin", "getMapData success")
-                    mapView.show3dMap(Show3DMapOptions()) { r ->
-                        r.onSuccess {
-                            runOnUiThread {
-                                loadingIndicator.visibility = android.view.View.GONE
-                            }
-                            onMapReady()
-                        }
-                        r.onFailure {
-                            runOnUiThread {
-                                loadingIndicator.visibility = android.view.View.GONE
-                            }
-                            Log.e("Mappedin", "show3dMap error: $it")
-                        }
-                    }
-                }.onFailure {
-                    runOnUiThread {
-                        loadingIndicator.visibility = android.view.View.GONE
-                    }
-                    Log.e("Mappedin", "getMapData error: $it")
+            result.onSuccess {
+                mapView.show3dMap(Show3DMapOptions()) { r ->
+                    r.onSuccess { onMapReady() }
+                    r.onFailure { Log.e("Mappedin", "show3dMap error: $it") }
                 }
+            }.onFailure {
+                Log.e("Mappedin", "getMapData error: $it")
+            }
         }
     }
+
 
 
     //this code executes when the map is ready
@@ -622,8 +604,35 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         //setup the managers
         floorManager = FloorManager(mapView)
         blueDotManager = BlueDotManager(mapView)
-        navigationManager = NavigationManager(this, mapView, container, isDark)
+        navigationManager = NavigationManager(this, mapView, ui.container, isDark)
         mapReady = true
+
+        mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
+            result.onSuccess { spaces ->
+                allSpaces = spaces
+                ui.allSpaces = spaces  // keep UIBuilder in sync
+                spaces.forEach { space ->
+                    mapView.updateState(space, GeometryUpdateState(interactive = true))
+                }
+            }
+        }
+
+        runOnUiThread {
+            ui.loadingIndicator.visibility = View.GONE
+            ui.buildControls(
+                onLocationClick = { enableFollowMode() },
+                onNavClick = {
+                    val intent = Intent(this, NavigationActivity::class.java)
+                    val roomNames = allSpaces.map { it.name }.filter { it.isNotBlank() }.distinct().sorted()
+                    intent.putStringArrayListExtra("room_names", ArrayList(roomNames))
+                    navLauncher.launch(intent)
+                },
+                onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
+                onSearchSubmit = { query -> navigateToRoom(query) },
+                onSearchItemClick = { room -> navigateToRoom(room) },
+
+            )
+        }
 
         //make doors visible
         mapView.updateState(
@@ -686,48 +695,17 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         //load floors
         mapView.mapData.getByType<Floor>(MapDataType.FLOOR) { result ->
             result.onSuccess { floors ->
-                floors.forEachIndexed { index, floor ->
-                    Log.d("Floors", "index=$index name=${floor.name} id=${floor.id}")
-                }
                 floorManager.setFloors(floors)
-                runOnUiThread { buildFloorSwitcher() }
-                // fake blue dot AFTER floors exist
-            }
-
-        }
-
-        // Put this INSIDE the connections callback
-        mapView.mapData.getByType<com.mappedin.models.Connection>(MapDataType.CONNECTION) { result ->
-            result.onSuccess { connections ->
-                Log.d("Connections", "Total connections: ${connections.size}")
-                connections.forEach { connection ->
-                    Log.d("Connections", connection.toString())
-                }
-
-                // Now try cross-floor after connections are confirmed loaded
-                val floor1Id = floorManager.allFloors.getOrNull(0)?.id
-                val floor2Id = floorManager.allFloors.getOrNull(1)?.id
-
-                val space1 = allSpaces.find { it.name == "Vestibule, Room 199.09" }
-                val space2 = allSpaces.find { it.name == "Room 211" }
-
-                Log.d("NavTest", "Testing: ${space1?.name} (${space1?.floor}) -> ${space2?.name} (${space2?.floor})")
-
-                if (space1 != null && space2 != null) {
-                    mapView.mapData.getDirections(
-                        NavigationTarget.SpaceTarget(space1),
-                        NavigationTarget.SpaceTarget(space2),
-                    ) { dirResult ->
-                        dirResult.onSuccess { directions ->
-                            Log.d("NavTest", "Cross-floor: ${directions?.distance ?: "NULL"}")
-                        }
-                        dirResult.onFailure {
-                            Log.e("NavTest", "Failed", it)
-                        }
+                runOnUiThread {
+                    ui.buildFloorSwitcher(floors) { floor ->
+                        floorManager.switchToFloor(floor)
                     }
+                    floorManager.currentFloor?.let { ui.highlightFloor(it) }
                 }
             }
         }
+
+
 
         blueDotManager.enable()
 
@@ -736,11 +714,15 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         // Listen for space click
         mapView.on(Events.Click) { payload ->
+            //first cancel previous ones
+            resetRunnable?.let { resetHandler.removeCallbacks { it }}
+
             val coordinate = payload?.coordinate
             Log.d("Coords", "lat=${coordinate?.latitude}, lon=${coordinate?.longitude}")
             val labels = payload?.labels
             Log.d("Highlight", "Click event - labels: ${labels?.size ?: 0}")
 
+            /*
             val clickedSpace: Space? = when {
                 !labels.isNullOrEmpty() -> {
                     val labelName = labels[0].text
@@ -748,6 +730,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
                 else -> null
             }
+             */
+            //check if they tapped a room first then the name
+            val clickedSpace = payload?.spaces?.firstOrNull()
+                ?: payload?.labels?.firstOrNull()?.let { label ->
+                    allSpaces.find { it.name == label.text }
+                }
 
             Log.d("Highlight", "clickedSpace: ${clickedSpace?.name ?: "null"}, highlighted: ${highlightedLabelSpace?.name ?: "null"}")
 
@@ -780,6 +768,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                                 Log.e("NavTest", "Missing location or floor")
                                 return@showSpaceInfoPanel
                             }
+                            val accessible = prefs.getBoolean("accessible_routes", false)
 
                             Log.d("Navigation", "From floor=${currentFloor.id} to space=${clickedSpace.name} on floor=${clickedSpace.floor}")
 
@@ -787,7 +776,9 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                                 destination = clickedSpace,
                                 userLat = loc.latitude,
                                 userLon = loc.longitude,
-                                floorId = currentFloor.id
+                                floorId = currentFloor.id,
+                                accessible = accessible
+
                             )
                         }
                     )
@@ -798,19 +789,11 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         //to track tapping away
         mapView.view.setOnTouchListener { _, _ ->
-            // Disable follow mode on manual interaction
-
             if (isFollowingUser) {
                 isFollowingUser = false
-                runOnUiThread {
-                    myLocationButton.backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt())
-                }
+                runOnUiThread { ui.setLocationButtonColor("#16A34A") }
             }
-
-            topSearchView.clearFocus()
-            searchResults.visibility = android.view.View.GONE
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            imm.hideSoftInputFromWindow(mapView.view.windowToken, 0)
+            ui.dismissSearch()
 
             resetRunnable?.let { resetHandler.removeCallbacks(it) }
             resetRunnable = Runnable {
@@ -818,10 +801,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 navigationManager.dismissInfoPanel()
             }
             resetHandler.postDelayed(resetRunnable!!, 300)
-
             false
         }
-
 
     }
 
@@ -846,12 +827,13 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         highlightedLabelSpace?.let { prev ->
             mapView.updateState(prev, GeometryUpdateState(
                 color = "initial",
-                //opacity = "initial"
+                opacity = 1.0
             ))
         }
         highlightedLabelSpace = null
     }
 
+    /*
     //build floor buttons from the loaded floors
     private fun buildFloorSwitcher() {
         floorMenu.removeAllViews()
@@ -899,7 +881,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         floorButton.setImageResource(iconRes)
     }
 
-
+     */
     //go to user location on map
     private fun moveToUserLocation() {
         val location = lastLocation
@@ -922,6 +904,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         )
     }
 
+    /*
     //open the search screen
     private fun openSearch() {
         val intent = Intent(this, SearchActivity::class.java)
@@ -936,6 +919,9 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         searchLauncher.launch(intent)
     }
 
+     */
+
+    /*
     //clear previous highlight and reset it back to default
     private fun clearHighlight() {
         val previous = highlightedSpace ?: return
@@ -955,6 +941,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         highlightedSpace = null
     }
 
+     */
+
     //zoom to a room when user picks one from search
     private fun navigateToRoom(roomName: String) {
         val space = allSpaces.find {
@@ -973,7 +961,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             val targetFloor = floorManager.allFloors.find { it.id == space.floor }
             if (targetFloor != null) {
                 floorManager.switchToFloor(targetFloor)
-                updateFloorButtonIcon(targetFloor)
+                ui.highlightFloor(targetFloor)
             }
         }
 
@@ -1032,6 +1020,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     }
 
     override fun onLocationChanged(location: IALocation) {
+
         lastLocation = location
 
         if (!mapReady) {
@@ -1049,11 +1038,13 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             "BlueDot",
             "IA floorLevel=${location.floorLevel}, mappedFloor=${mappedFloor.name}"
         )
-        if (floorManager.currentFloor?.id != mappedFloor.id) {
-            //floorManager.switchToFloor(mappedFloor)
-            runOnUiThread {
-                updateFloorButtonIcon(mappedFloor)
-            }
+        //if auto floor switch is enabled, switch floors
+        val autoSwitch = prefs.getBoolean("auto_floor_switch", true)
+        if (autoSwitch) {
+            floorManager.switchToFloor(mappedFloor)
+        }
+        runOnUiThread {
+            ui.highlightFloor(mappedFloor)
         }
 
         blueDotManager.updatePosition(

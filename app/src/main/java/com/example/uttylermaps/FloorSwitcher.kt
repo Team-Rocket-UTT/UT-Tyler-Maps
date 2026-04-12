@@ -37,7 +37,7 @@ class FloorManager(private val mapView: MapView) {
     }
 
     //maps indoor atlas floor level number to mappedin floor object
-    //indoor atlas: 0 = ground floor, 1 = second...
+    //indoor atlas: 1 = ground floor, 2 = second...
     fun findFloorForLevel(floorLevel: Int): Floor? {
         //change these to match your mappedin floor names
         val floorName = when (floorLevel) {

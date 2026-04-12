@@ -1,14 +1,19 @@
+import java.util.Properties
+val localProps = Properties().apply{
+    val file = rootProject.file("local.properties")
+    if(file.exists()){
+        load(file.inputStream())
+    }
+}
 plugins {
     alias(libs.plugins.android.application)
 }
 
 android {
+
+
     namespace = "com.example.uttylermaps"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.uttylermaps"
@@ -18,6 +23,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "MAPPEDIN_KEY", "\"${localProps["MAPPEDIN_KEY"]}\"")
+        buildConfigField("String", "MAPPEDIN_SECRET", "\"${localProps["MAPPEDIN_SECRET"]}\"")
+        buildConfigField("String", "MAPPEDIN_MAP_ID", "\"${localProps["MAPPEDIN_MAP_ID"]}\"")
+
+
     }
 
     buildTypes {
@@ -35,6 +46,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
