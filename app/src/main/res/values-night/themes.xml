@@ -1,7 +1,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.UTTylerMaps" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+        <item name="colorSurface">#1F1F1F</item>
+        <item name="colorSurfaceContainer">#303134</item>
+        <item name="colorSurfaceContainerHigh">#303134</item>
+        <item name="colorOnSurface">#E8EAED</item>
+        <item name="colorOnSurfaceVariant">#9AA0A6</item>
+        <item name="colorPrimary">#002F6C</item>
     </style>
 </resources>

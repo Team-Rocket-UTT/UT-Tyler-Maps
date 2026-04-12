@@ -10,14 +10,17 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
-import android.widget.SearchView
 import android.widget.TextView
+import com.google.android.material.search.SearchView as MaterialSearchView
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.setPadding
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.search.SearchBar
 import com.mappedin.MapView
 import com.mappedin.models.Floor
 import com.mappedin.models.Space
@@ -36,7 +39,9 @@ class UIBuilder(
     lateinit var searchResults: ListView
     // Change field type:
     lateinit var searchAdapter: SearchResultAdapter
-    lateinit var topSearchView: SearchView
+
+    lateinit var materialSearchBar: SearchBar
+    lateinit var materialSearchView: MaterialSearchView
     lateinit var bottomNav: BottomNavigationView
     var filteredRooms: MutableList<String> = mutableListOf()
     var allSpaces: List<Space> = emptyList()
@@ -117,7 +122,7 @@ class UIBuilder(
         startNavButton = FloatingActionButton(activity).apply {
             size = FloatingActionButton.SIZE_NORMAL
             setImageResource(R.drawable.directions)
-            backgroundTintList = ColorStateList.valueOf("#2563EB".toColorInt())
+            backgroundTintList = ColorStateList.valueOf("#002F6C".toColorInt())
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
@@ -189,7 +194,7 @@ class UIBuilder(
             val bg = chip.background as android.graphics.drawable.GradientDrawable
 
             if (isActive) {
-                bg.setColor("#2563EB".toColorInt())
+                bg.setColor("#002F6C".toColorInt())
                 chip.setTextColor(android.graphics.Color.WHITE)
                 chip.setTypeface(null, android.graphics.Typeface.BOLD)
             } else {
@@ -251,181 +256,192 @@ class UIBuilder(
         onSearchSubmit: (String) -> Unit,
         onSearchItemClick: (String) -> Unit
     ) {
-        searchOverlay = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 0)
-        }
-
-        topSearchView = buildSearchView(onSearchSubmit)
-        val searchBarWrapper = FrameLayout(activity).apply {
-            setPadding(16, 8, 16, 4)
-        }
-        searchBarWrapper.addView(topSearchView)
-        searchOverlay.addView(searchBarWrapper)
-
-        searchOverlay.addView(buildCategoryChips())
-
+        // — Create results list FIRST —
         filteredRooms = mutableListOf()
         searchAdapter = SearchResultAdapter(activity, filteredRooms, isDark, searchHistory)
         searchResults = ListView(activity).apply {
             visibility = View.GONE
-            val bg = if (isDark) "#303134".toColorInt() else "#FFFFFF".toColorInt()
-            setBackgroundColor(bg)
-            elevation = 8f
             divider = null
             dividerHeight = 0
             adapter = searchAdapter
-
-            // Rounded corners on the list container
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 16f
-                setColor(bg)
-            }
         }
 
-        searchResults.setOnItemClickListener { _, _, position, _ ->
-            val selectedRoom = filteredRooms[position]
-            onSearchItemClick(selectedRoom)
-            searchResults.visibility = View.GONE
-            filteredRooms.clear()
-            searchAdapter.notifyDataSetChanged()
-            topSearchView.setQuery(selectedRoom, false)
-            topSearchView.clearFocus()
+        // — Search Bar (the collapsed pill) —
+        materialSearchBar = SearchBar(activity).apply {
+            hint = "Search for rooms, labs..."
+            id = View.generateViewId()
         }
 
-        searchOverlay.addView(searchResults, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = 16
-            marginEnd = 16
-        })
+        // — Search View (the expanded overlay) —
+        materialSearchView = MaterialSearchView(activity).apply {
+            setupWithSearchBar(materialSearchBar)
+            hint = "Search for rooms, labs..."
 
-        val searchParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.TOP
-        }
-        container.addView(searchOverlay, searchParams)
-    }
-
-    private fun buildSearchView(onSearchSubmit: (String) -> Unit): SearchView {
-        val uiBuilder = this
-
-        return SearchView(activity).apply {
-            queryHint = "Search for rooms, labs..."
-            setIconifiedByDefault(false)
-
-            val bgColor = if (isDark) "#303134".toColorInt() else "#F1F3F4".toColorInt()
-            val textColor = if (isDark) "#E8EAED".toColorInt() else "#202124".toColorInt()
-            val hintColor = if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt()
-            val iconColor = if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt()
-
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 28f
-                setColor(bgColor)
-            }
-            setPadding(16, 4, 16, 4)
-            elevation = 4f
-
-            findViewById<View?>(androidx.appcompat.R.id.search_plate)?.background = null
-            findViewById<View?>(androidx.appcompat.R.id.search_bar)?.background = null
-            findViewById<View?>(androidx.appcompat.R.id.submit_area)?.background = null
-
-            findViewById<TextView?>(androidx.appcompat.R.id.search_src_text)?.apply {
-                setTextColor(textColor)
-                setHintTextColor(hintColor)
-            }
-
-            findViewById<android.widget.ImageView?>(androidx.appcompat.R.id.search_mag_icon)
-                ?.setColorFilter(iconColor)
-
-            findViewById<android.widget.ImageView?>(androidx.appcompat.R.id.search_close_btn)
-                ?.setColorFilter(iconColor)
-
-            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    if (!query.isNullOrBlank()) {
-                        onSearchSubmit(query)
-                        searchResults.visibility = View.GONE
-                        clearFocus()
-                    }
-                    return true
+            editText.setOnEditorActionListener { _, _, _ ->
+                val query = text.toString()
+                if (query.isNotBlank()) {
+                    onSearchSubmit(query)
+                    hide()
                 }
+                true
+            }
 
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    val q = newText?.trim()?.lowercase() ?: ""
+            editText.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    val q = s?.toString()?.trim()?.lowercase() ?: ""
                     filteredRooms.clear()
-
-                    if (q.isBlank()) {
-                        searchResults.visibility = View.GONE
-                    } else {
+                    if (q.isNotBlank()) {
                         filteredRooms.addAll(
-                            uiBuilder.allSpaces.map { it.name }
+                            allSpaces.map { it.name }
                                 .filter { it.isNotBlank() && it.lowercase().contains(q) }
                                 .distinct()
                                 .sorted()
                         )
-                        searchAdapter.notifyDataSetChanged()
-                        searchResults.visibility =
-                            if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
+                    } else {
+                        // Show history when text is cleared
+                        filteredRooms.addAll(searchHistory.getHistory())
                     }
-                    return true
+                    searchAdapter.notifyDataSetChanged()
+                    searchResults.visibility =
+                        if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
                 }
+                override fun afterTextChanged(s: android.text.Editable?) {}
             })
 
-            setOnQueryTextFocusChangeListener { _, hasFocus ->
-                if (hasFocus && query.isNullOrEmpty()) {
-                    // Show search history
-                    filteredRooms.clear()
-                    filteredRooms.addAll(searchHistory.getHistory())
-                    searchAdapter.notifyDataSetChanged()
-                    searchResults.visibility = if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
-                } else if (!hasFocus) {
-                    searchResults.visibility = View.GONE
+            addTransitionListener { _, _, newState ->
+                when (newState) {
+                    MaterialSearchView.TransitionState.SHOWN -> {
+                        searchOverlay.visibility = View.GONE
+                        if (editText.text.isNullOrEmpty()) {
+                            filteredRooms.clear()
+                            filteredRooms.addAll(searchHistory.getHistory())
+                            searchAdapter.notifyDataSetChanged()
+                            searchResults.visibility = if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
+                        }
+                    }
+                    MaterialSearchView.TransitionState.SHOWING -> {
+                        searchOverlay.visibility = View.GONE
+                    }
+                    MaterialSearchView.TransitionState.HIDDEN -> {
+                        searchOverlay.visibility = View.VISIBLE
+                        searchResults.visibility = View.GONE
+                    }
+                    else -> {}
                 }
             }
-        }
-    }
 
+            // Add results list into the SearchView body
+            addView(searchResults)
+        }
+
+        searchResults.setOnItemClickListener { _, _, position, _ ->
+            val selected = filteredRooms[position]
+            onSearchItemClick(selected)
+            materialSearchView.hide()
+            materialSearchBar.setText(selected)
+        }
+
+        // Add SearchView (full-screen overlay)
+        container.addView(materialSearchView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        // Wrap SearchBar + chips at the top
+        searchOverlay = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(materialSearchBar, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(buildCategoryChips())
+        }
+
+        container.addView(searchOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.TOP })
+    }
 
     // ── Quick filter buttons ──
     private fun buildCategoryChips(): android.widget.HorizontalScrollView {
         return android.widget.HorizontalScrollView(activity).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(12, 4, 12, 4)
+            setPadding(16, 12, 24, 4)
 
-            val chipRow = LinearLayout(activity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(4, 0, 4, 0)
+            val chipGroup = ChipGroup(activity).apply {
+                isSingleLine = true
+                chipSpacingHorizontal = 16
+                setPadding(16, 0, 16, 0)
             }
 
             val categories = listOf(
-                Pair("Restrooms", R.drawable.restroom),     // your icons
+                Pair("Restrooms", R.drawable.restroom),
                 Pair("Offices", R.drawable.office),
                 Pair("Labs", R.drawable.lab),
-                //Pair("Classrooms", R.drawable.classroom)
             )
 
             for ((label, iconRes) in categories) {
-                chipRow.addView(buildChip(label, iconRes))
+                chipGroup.addView(Chip(activity).apply {
+                    // Use elevated assist style — matches Google Maps look
+                    setChipIconResource(iconRes)
+                    text = label
+                    isChipIconVisible = true
+                    isCheckable = false
+
+                    // Google Maps style: elevated, no stroke
+                    chipBackgroundColor = ColorStateList.valueOf(
+                        if (isDark) "#303134".toColorInt() else "#FFFFFF".toColorInt()
+                    )
+                    chipStrokeWidth = 0f
+                    setTextColor(if (isDark) "#E8EAED".toColorInt() else "#202124".toColorInt())
+                    chipIconTint = ColorStateList.valueOf(
+                        if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt()
+                    )
+
+                    // Size
+                    chipMinHeight = 48f.dpToPx()
+                    chipIconSize = 18f.dpToPx()
+                    ensureAccessibleTouchTarget(0)
+
+                    // Pill shape
+                    shapeAppearanceModel = shapeAppearanceModel.toBuilder()
+                        .setAllCornerSizes(24f.dpToPx())
+                        .build()
+
+                    // Elevation for shadow (key Google Maps trait)
+                    elevation = if (isDark) 2f else 4f
+
+                    // Padding
+                    chipStartPadding = 12f.dpToPx()
+                    chipEndPadding = 12f.dpToPx()
+                    iconStartPadding = 4f.dpToPx()
+                    textStartPadding = 4f.dpToPx()
+
+                    setOnClickListener {
+                        filterRoomsByKeyword(label.lowercase().removeSuffix("s"))
+                    }
+                })
             }
 
-            addView(chipRow)
+            addView(chipGroup)
         }
     }
 
+    private fun Float.dpToPx(): Float {
+        return this * activity.resources.displayMetrics.density
+    }
     private fun buildChip(label: String, iconRes: Int): LinearLayout {
-        val chipBg = if (isDark) "#303134".toColorInt() else "#FFFFFF".toColorInt()
+        val chipBg = if (isDark) "#2A2A2A".toColorInt() else "#F1F3F4".toColorInt()
         val chipText = if (isDark) "#E8EAED".toColorInt() else "#202124".toColorInt()
         val chipStroke = if (isDark) "#5F6368".toColorInt() else "#DADCE0".toColorInt()
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(32, 20, 36, 20)
-            elevation = 2f
+            setPadding(32, 16, 36, 20)
+            elevation = 0f
 
             background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = 40f
@@ -437,7 +453,7 @@ class UIBuilder(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                marginEnd = 10
+                marginEnd = 30
             }
 
             addView(android.widget.ImageView(activity).apply {
@@ -504,7 +520,10 @@ class UIBuilder(
     }
 
     private fun filterRoomsByKeyword(keyword: String) {
-        topSearchView.clearFocus()
+        materialSearchBar.setText(keyword)
+        materialSearchView.show()
+        materialSearchView.editText.setText(keyword)
+        // filtering logic stays the same
         filteredRooms.clear()
         filteredRooms.addAll(
             allSpaces.map { it.name }
@@ -519,11 +538,9 @@ class UIBuilder(
     // ── Helpers ──
 
     fun dismissSearch() {
-        topSearchView.clearFocus()
-        searchResults.visibility = View.GONE
-        val imm = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-                as android.view.inputmethod.InputMethodManager
-        imm.hideSoftInputFromWindow(mapView.view.windowToken, 0)
+        if (::materialSearchView.isInitialized && materialSearchView.isShowing) {
+            materialSearchView.hide()
+        }
     }
 
     // ── Window insets ──
@@ -553,7 +570,8 @@ class UIBuilder(
                 }
             }
 
-            searchOverlay.setPadding(24, statusBar.top + 16, 24, 0)
+            searchOverlay.setPadding(24, statusBar.top, 24, 0)
+
 
             insets
         }
