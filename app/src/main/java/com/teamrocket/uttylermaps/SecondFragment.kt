@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.os.Bundle
 import androidx.fragment.app.Fragment
@@ -6,7 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.navigation.fragment.findNavController
-import com.example.uttylermaps.databinding.FragmentSecondBinding
+import com.teamrocket.uttylermaps.databinding.FragmentSecondBinding
 
 /**
  * A simple [Fragment] subclass as the second destination in the navigation.

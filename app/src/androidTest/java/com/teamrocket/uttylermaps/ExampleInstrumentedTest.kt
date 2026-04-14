@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.example.uttylermaps", appContext.packageName)
+        assertEquals("com.teamrocket.uttylermaps", appContext.packageName)
     }
 }

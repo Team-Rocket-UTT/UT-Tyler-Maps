@@ -1,17 +1,15 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.content.res.ColorStateList
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import com.google.android.material.search.SearchView as MaterialSearchView
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat

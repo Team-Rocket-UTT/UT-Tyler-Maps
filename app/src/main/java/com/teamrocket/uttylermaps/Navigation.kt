@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.util.Log
 import android.view.Gravity

@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.os.Bundle
 import android.os.Handler
@@ -10,31 +10,15 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import com.mappedin.MapView
-import com.mappedin.models.Annotation
-import com.mappedin.models.Area
 import com.mappedin.models.CameraAnimationOptions
 import com.mappedin.models.CameraTarget
-import com.mappedin.models.Connection
-import com.mappedin.models.Door
 import com.mappedin.models.EasingFunction
-import com.mappedin.models.EnterpriseCategory
-import com.mappedin.models.EnterpriseLocation
-import com.mappedin.models.EnterpriseVenue
-import com.mappedin.models.Facade
-import com.mappedin.models.Floor
-import com.mappedin.models.FloorStack
 import com.mappedin.models.GetMapDataWithCredentialsOptions
-import com.mappedin.models.LocationCategory
-import com.mappedin.models.LocationProfile
 import com.mappedin.models.MapDataType
-import com.mappedin.models.MapObject
-import com.mappedin.models.Node
 import com.mappedin.models.PointOfInterest
 import com.mappedin.models.Show3DMapOptions
-import com.mappedin.models.Space
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.floor
 import kotlin.math.sin
 
 class DisplayMapDemoActivity : AppCompatActivity() {

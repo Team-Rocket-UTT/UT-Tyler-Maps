@@ -12,11 +12,11 @@ plugins {
 android {
 
 
-    namespace = "com.example.uttylermaps"
+    namespace = "com.teamrocket.uttylermaps"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.uttylermaps"
+        applicationId = "com.teamrocket.uttylermaps"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

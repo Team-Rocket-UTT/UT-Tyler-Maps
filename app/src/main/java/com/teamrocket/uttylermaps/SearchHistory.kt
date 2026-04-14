@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 class SearchHistory(context: android.content.Context) {
     private val prefs = context.getSharedPreferences("search_history", android.content.Context.MODE_PRIVATE)
     private val MAX_HISTORY = 10

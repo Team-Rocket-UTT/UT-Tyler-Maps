@@ -1,7 +1,7 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.annotation.SuppressLint
-import com.example.uttylermaps.BuildConfig
+import com.teamrocket.uttylermaps.BuildConfig
 import android.os.Bundle
 import android.util.Log
 import android.app.Activity
@@ -28,7 +28,10 @@ import com.mappedin.models.EasingFunction
 import com.mappedin.models.PointOfInterest
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.remote.creation.first
 import androidx.core.graphics.toColorInt
@@ -127,7 +130,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         title = "Display a Map"
 
         mapView = MapView(this)
+
+
+
         ui = UIBuilder(this, isDark, mapView)
+
+
         setContentView(ui.buildInitialLayout())
 
         // Enable edge-to-edge
@@ -245,7 +253,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     //this code executes when the map is ready
     @SuppressLint("ClickableViewAccessibility")
     private fun onMapReady() {
-
         //setup the managers
         floorManager = FloorManager(mapView)
         blueDotManager = BlueDotManager(mapView)
@@ -275,7 +282,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
                 allSpaces = spaces
-                ui.allSpaces = spaces  // keep UIBuilder in sync
+                ui.allSpaces = spaces  // keep UI synced
                 spaces.forEach { space ->
                     mapView.updateState(space, GeometryUpdateState(interactive = true))
                 }
@@ -294,16 +301,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
         }
-        mapView.mapData.getByType<com.mappedin.models.LocationCategory>(MapDataType.LOCATION_CATEGORY) { result ->
-            result.onSuccess { categories ->
-
-                for (cat in categories) {
-                    cat
-                    //Log.d("Categories", "id=${cat.id}, name=${cat.name}, parent=${cat.parent}, children=${cat.children}")
-                }
-            }
-        }
-
         runOnUiThread {
             ui.loadingIndicator.visibility = View.GONE
             ui.container.findViewWithTag<View>("loadingOverlay")?.let {
@@ -364,10 +361,10 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         """
 
         val elevatorIcon = """
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path d="M12 8H17C17.5523 8 18 8.44772 18 9V19C18 19.5523 17.5523 20 17 20H12M12 8H7C6.44772 8 6 8.44772 6 9V19C6 19.5523 6.44772 20 7 20H12M12 8V20M7.5 4.5L9 3L10.5 4.5M13.5 3L15 4.5L16.5 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-</svg>
-"""
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 8H17C17.5523 8 18 8.44772 18 9V19C18 19.5523 17.5523 20 17 20H12M12 8H7C6.44772 8 6 8.44772 6 9V19C6 19.5523 6.44772 20 7 20H12M12 8V20M7.5 4.5L9 3L10.5 4.5M13.5 3L15 4.5L16.5 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        """
 
         val stairsIcon ="""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
 
@@ -448,7 +445,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         val elevatorSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
 
 
-        mapView.mapData.getByType<com.mappedin.models.Connection>(MapDataType.CONNECTION) { result ->
+        mapView.mapData.getByType<Connection>(MapDataType.CONNECTION) { result ->
             result.onSuccess { connections ->
                 for (connection in connections) {
                     val icon = if (connection.type == Connection.ConnectionType.STAIRS) {
@@ -501,15 +498,10 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
 
         }
-
-
-
+        //enable the blue dot after all map loads
         blueDotManager.enable()
 
-
-
-
-        // Listen for space click
+        // Listen for space taps
         mapView.on(Events.Click) { payload ->
             resetRunnable?.let { resetHandler.removeCallbacks(it) }
 
@@ -539,8 +531,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
 
-
-
             // During filter mode only allow clicking filtered spaces
             if (ui.isFilterActive()) {
                 if (clickedSpace != null && clickedSpace.name.isNotBlank()) {
@@ -550,7 +540,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                             hasLocation = lastLocation != null,
                             onDirections = {
                                 val loc = lastLocation
-                                val floor = blueDotFloorId  // use blue dot floor, not displayed floor
+                                val floor = blueDotFloorId  // use blue dot floor
 
                                 if (loc == null || floor == null) return@showSpaceInfoPanel
                                 val accessible = prefs.getBoolean("accessible_routes", false)
@@ -566,7 +556,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
             //no filters
             Log.d("Highlight", "clickedSpace: ${clickedSpace?.name ?: "null"}, highlighted: ${highlightedLabelSpace?.name ?: "null"}")
-
             resetHighlightedLabel()
 
             if (clickedSpace == null) {
@@ -606,7 +595,22 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         }
 
         //to track tapping away
-        mapView.view.setOnTouchListener { _, _ ->
+        mapView.view.setOnTouchListener { v, event ->
+            // block taps in bottom-left watermark area
+            if (event.action == android.view.MotionEvent.ACTION_DOWN ||
+                event.action == android.view.MotionEvent.ACTION_UP) {
+                val density = resources.displayMetrics.density
+                val blockWidth = 220 * density
+                val blockHeight = 90 * density
+                val inBottomLeft =
+                    event.x <= blockWidth &&
+                            event.y >= (v.height - blockHeight)
+
+                if (inBottomLeft) {
+                    Log.d("WatermarkBlock", "Blocked watermark tap")
+                    return@setOnTouchListener true
+                }
+            }
             if (isFollowingUser) {
                 isFollowingUser = false
                 runOnUiThread { ui.setLocationButtonColor("#16A34A") }
@@ -623,7 +627,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             }
             false
         }
-        // Step 1: Set blue dot on first floor (your existing code)
+        //Set blue dot on first floor
         Handler(Looper.getMainLooper()).postDelayed({
             val firstFloor = floorManager.allFloors.find { it.name.contains("First", ignoreCase = true) }
             setFakeLocation(32.31302445024953, -95.25148019466819, firstFloor)
@@ -641,10 +645,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 syncBlueDotVisibility()
             }
         }
-
-
-
-
 
 
     }//oonmapready

@@ -1,4 +1,4 @@
-package com.example.uttylermaps
+package com.teamrocket.uttylermaps
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
