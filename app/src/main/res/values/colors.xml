@@ -2,4 +2,10 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="uttblue">#002F6C</color>
+    <color name="uttorange">#BF5700</color>
+    <color name="nav_unselected">#9AA0A6</color>
+    <color name="nav_bar_bg">#FFFFFF</color>
+    <color name="nav_bar_bg_dark">#1A1A1A</color>
+    <color name="dark_bg">#1F1F1F</color>
 </resources>

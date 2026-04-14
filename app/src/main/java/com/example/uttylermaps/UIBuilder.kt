@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import com.google.android.material.search.SearchView as MaterialSearchView
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
@@ -64,6 +65,16 @@ class UIBuilder(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
+        // Colored overlay to hide the white map
+        val loadingOverlay = View(activity).apply {
+            setBackgroundColor(if (isDark) "#1F1F1F".toColorInt() else "#F5F5F5".toColorInt())
+            tag = "loadingOverlay"
+        }
+        container.addView(loadingOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
 
         loadingIndicator = ProgressBar(activity)
         container.addView(
@@ -229,13 +240,25 @@ class UIBuilder(
 
     private fun buildBottomNav(onSettingsClick: () -> Unit) {
         bottomNav = BottomNavigationView(activity).apply {
+
             inflateMenu(R.menu.navigation_bar)
+
+            itemActiveIndicatorColor = ColorStateList.valueOf(
+                activity.getColor(R.color.uttblue)
+            )
+
+            minimumHeight = 0
+            setPadding(0,0,0,0)
             setOnItemSelectedListener { item ->
                 when (item.itemId) {
                     R.id.nav_map -> true
+                    R.id.nav_favorites -> {
+                        android.widget.Toast.makeText(activity, "Coming Soon!", android.widget.Toast.LENGTH_SHORT).show()
+                        false
+                    }
                     R.id.nav_settings -> {
                         onSettingsClick()
-                        true
+                        false
                     }
                     else -> false
                 }
@@ -244,6 +267,7 @@ class UIBuilder(
         val params = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
+
         ).apply {
             gravity = Gravity.BOTTOM
         }
@@ -351,11 +375,18 @@ class UIBuilder(
         // Wrap SearchBar + chips at the top
         searchOverlay = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
+            clipToPadding = false
+            clipChildren = false
             addView(materialSearchBar, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
-            addView(buildCategoryChips())
+            addView(buildCategoryChips(), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = -12  // pull chips closer to search bar
+            })
         }
 
         container.addView(searchOverlay, FrameLayout.LayoutParams(
@@ -367,30 +398,31 @@ class UIBuilder(
     // ── Quick filter buttons ──
     private fun buildCategoryChips(): android.widget.HorizontalScrollView {
         return android.widget.HorizontalScrollView(activity).apply {
-            isHorizontalScrollBarEnabled = false
-            setPadding(16, 12, 24, 4)
+            isHorizontalScrollBarEnabled = true
+            setPadding(50, 4, 50, 4)
+            clipToPadding = false
 
             val chipGroup = ChipGroup(activity).apply {
                 isSingleLine = true
-                chipSpacingHorizontal = 16
-                setPadding(16, 0, 16, 0)
+                chipSpacingHorizontal = 12
+                //setPadding(24, 0, 24, 0)
             }
 
             val categories = listOf(
-                Pair("Restrooms", R.drawable.restroom),
-                Pair("Offices", R.drawable.office),
-                Pair("Labs", R.drawable.lab),
+                Triple("Restrooms", R.drawable.restroom, "restroom"),
+                Triple("Classrooms", R.drawable.classroom, "classroom"),
+                Triple("Labs", R.drawable.lab, "lab"),
+                Triple("Offices", R.drawable.office, "office"),
+                Triple("Study Rooms", R.drawable.studyroom, "conference"),
+                Triple("Food", R.drawable.restaurant, "restaurant"),
             )
 
-            for ((label, iconRes) in categories) {
+            for ((label, iconRes, keyword) in categories) {
                 chipGroup.addView(Chip(activity).apply {
-                    // Use elevated assist style — matches Google Maps look
                     setChipIconResource(iconRes)
                     text = label
                     isChipIconVisible = true
                     isCheckable = false
-
-                    // Google Maps style: elevated, no stroke
                     chipBackgroundColor = ColorStateList.valueOf(
                         if (isDark) "#303134".toColorInt() else "#FFFFFF".toColorInt()
                     )
@@ -401,8 +433,8 @@ class UIBuilder(
                     )
 
                     // Size
-                    chipMinHeight = 48f.dpToPx()
-                    chipIconSize = 18f.dpToPx()
+                    chipMinHeight = 36f.dpToPx()
+                    chipIconSize = 24f.dpToPx()
                     ensureAccessibleTouchTarget(0)
 
                     // Pill shape
@@ -410,17 +442,16 @@ class UIBuilder(
                         .setAllCornerSizes(24f.dpToPx())
                         .build()
 
-                    // Elevation for shadow (key Google Maps trait)
                     elevation = if (isDark) 2f else 4f
-
                     // Padding
                     chipStartPadding = 12f.dpToPx()
                     chipEndPadding = 12f.dpToPx()
                     iconStartPadding = 4f.dpToPx()
                     textStartPadding = 4f.dpToPx()
 
+                    text = label
                     setOnClickListener {
-                        filterRoomsByKeyword(label.lowercase().removeSuffix("s"))
+                        filterRoomsByKeyword(keyword)
                     }
                 })
             }
@@ -516,24 +547,152 @@ class UIBuilder(
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { marginEnd = 12 }
             })
+            addView(Button(activity).apply {
+                text = "Study"
+                setBackgroundColor(buttonBg)
+                setTextColor(buttonText)
+                setOnClickListener { filterRoomsByKeyword("conference") }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = 12 }
+            })
         }
     }
+    private var activeFilter: String? = null
 
+    private val categoryMap = mapOf(
+        "restroom" to listOf("cat_598c9293e4e54a3d", "cat_9ca8623837d4867f", "cat_fa9910b45005fb0b"),
+        "office" to listOf("cat_9caae6c50fb0045f"),
+        "lab" to listOf("cat_7b16b0f151765a1f"),
+        "conference" to listOf("cat_922d4ca5a71fbcb7"),
+        "classroom" to listOf("cat_45e221e1206031ea"),
+        "restaurant" to listOf("cat_cdcf20533032e7af", "cat_c42a46873f548188"),
+        "computers" to listOf("cat_726989eb1bc82b34"),
+    )
+    private val filterDisplayNames = mapOf(
+        "restroom" to "Restrooms",
+        "office" to "Offices",
+        "lab" to "Labs",
+        "conference" to "Study Rooms",
+        "classroom" to "Classrooms",
+        "restaurant" to "Food & Drink",
+        "computers" to "Computers"
+    )
     private fun filterRoomsByKeyword(keyword: String) {
-        materialSearchBar.setText(keyword)
-        materialSearchView.show()
-        materialSearchView.editText.setText(keyword)
-        // filtering logic stays the same
-        filteredRooms.clear()
-        filteredRooms.addAll(
-            allSpaces.map { it.name }
-                .filter { it.isNotBlank() && it.contains(keyword, ignoreCase = true) }
-                .distinct()
-                .sorted()
-        )
-        searchAdapter.notifyDataSetChanged()
-        searchResults.visibility = if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
+        val displayName = filterDisplayNames[keyword] ?: keyword.replaceFirstChar { it.uppercase() }
+        materialSearchBar.setText(displayName)
+        activeFilter = keyword
+
+        materialSearchBar.setNavigationIcon(com.google.android.material.R.drawable.ic_clear_black_24)
+        materialSearchBar.setNavigationOnClickListener { clearFilter() }
+
+        // Fade all spaces
+        allSpaces.forEach { space ->
+            mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+                color = "initial",
+                interactive = false
+            ))
+        }
+
+        // Get matching category IDs
+        val categoryIds = categoryMap[keyword] ?: emptyList()
+
+        // Get all profile IDs that belong to those categories
+        mapView.mapData.getByType<com.mappedin.models.LocationCategory>(com.mappedin.models.MapDataType.LOCATION_CATEGORY) { result ->
+            result.onSuccess { categories ->
+                val matchingProfileIds = categories
+                    .filter { it.id in categoryIds }
+                    .flatMap { it.locationProfiles }
+                    .toSet()
+
+                // Find spaces whose profiles match
+                val matchingSpaces = allSpaces.filter { space ->
+                    space.locationProfiles.any { profile -> profile in matchingProfileIds }
+                }
+
+                activity.runOnUiThread {
+                    matchingSpaces.forEach { space ->
+                        mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+                            color = "#FF8200",
+                            opacity = 0.6,
+                            interactive = true
+                        ))
+                    }
+
+                    mapView.labels.removeAll()
+
+                    matchingSpaces.forEach { space ->
+                        mapView.labels.add(
+                            target = space,
+                            text = space.name,
+                            options = com.mappedin.models.AddLabelOptions(
+                                labelAppearance = com.mappedin.models.LabelAppearance(),
+                                interactive = true
+                            )
+                        )
+                    }
+
+                    if (matchingSpaces.isNotEmpty()) {
+                        val targets = matchingSpaces.map {
+                            com.mappedin.models.FocusTarget.SpaceTarget(it)
+                        }
+                        mapView.camera.focusOn(
+                            targets,
+                            com.mappedin.models.FocusOnOptions(
+                                animationDuration = 3000,
+                                easing = com.mappedin.models.EasingFunction.EASE_IN_OUT
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
+    //private var activeFilter: String? = null
+    private var clearFilterButton: android.widget.ImageView? = null
+    private fun showClearFilterButton() {
+        clearFilterButton?.let { materialSearchBar.removeView(it) }
+
+        clearFilterButton = android.widget.ImageView(activity).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setColorFilter(if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt())
+            setPadding(16, 16, 16, 16)
+            setOnClickListener { clearFilter() }
+        }
+
+        // Add X to the end of the search bar
+        materialSearchBar.addView(clearFilterButton, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            marginEnd = 16
+        })
+    }
+
+
+    fun clearFilter() {
+        if (activeFilter == null) return
+        activeFilter = null
+        materialSearchBar.setText("")
+
+        // Restore default search icon
+        materialSearchBar.setNavigationIcon(com.google.android.material.R.drawable.ic_search_black_24)
+        materialSearchBar.setNavigationOnClickListener(null)
+
+        // Restore all spaces
+        allSpaces.forEach { space ->
+            mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+                color = "initial",
+                opacity = 1.0,
+                interactive = true
+            ))
+        }
+
+        activity.reAddAllLabels()
+    }
+    fun isFilterActive(): Boolean = activeFilter != null
 
     // ── Helpers ──
 

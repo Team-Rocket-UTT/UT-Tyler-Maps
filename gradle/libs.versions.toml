@@ -9,9 +9,10 @@ material = "1.13.0"
 constraintlayout = "2.2.1"
 navigationFragmentKtx = "2.9.7"
 navigationUiKtx = "2.9.7"
-mappedin = "6.2.0-beta.1"
+mappedin = "6.2.0"
 indooratlas = "3.7.1"
 preference = "1.2.0"
+remoteCreationCore = "1.0.0-alpha07"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,6 +28,7 @@ mappedin =  { module = "com.mappedin.sdk:mappedin", version.ref = "mappedin" }
 androidx-preference = { group = "androidx.preference", name = "preference", version.ref = "preference" }
 
 indooratlas-sdk = { module = "com.indooratlas.android:indooratlas-android-sdk", version.ref = "indooratlas" }
+androidx-remote-creation-core = { group = "androidx.compose.remote", name = "remote-creation-core", version.ref = "remoteCreationCore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

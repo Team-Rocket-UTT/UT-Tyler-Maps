@@ -13,8 +13,8 @@ class BlueDotManager(private val mapView: MapView) {
     fun enable() {
         val options = BlueDotOptions(
             accuracyRing = BlueDotOptions.AccuracyRing(color = "#2266ff", opacity = 0.25),
-            color = "#2266ff",
-            heading = BlueDotOptions.Heading(color = "#2266ff", opacity = 0.6),
+            color = "#002F6C",
+            //heading = BlueDotOptions.Heading(color = "#2266ff", opacity = 0.6),
             initialState = BlueDotOptions.InitialState.INACTIVE,
             radius = 12.0,
             watchDevicePosition = false //we handle position ourselves with indoor atlas
@@ -35,6 +35,7 @@ class BlueDotManager(private val mapView: MapView) {
     //send a new position to the blue dot
     fun updatePosition(lat: Double, lon: Double, accuracy: Double, floor: Floor) {
 
+        Log.d("BlueDot", "Updating: lat=$lat, lon=$lon, floorId=${floor.id}, floorName=${floor.name}")
         val position = BlueDotPositionUpdate(
             accuracy = BlueDotPositionUpdate.Accuracy.Value(accuracy),
             floorId = BlueDotPositionUpdate.FloorId.Id(floor.id),

@@ -1,13 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.UTTylerMaps" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorSurface">@color/white</item>
-        <item name="colorSurfaceContainer">@color/white</item>
-        <item name="colorSurfaceContainerHigh">@color/white</item>
-        <item name="colorOnSurface">@color/black</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorSurfaceContainer">#F5F5F5</item>
+        <item name="colorSurfaceContainerHigh">#EEEEEE</item>
+        <item name="colorOnSurface">#1A1A1A</item>
         <item name="colorOnSurfaceVariant">#5F6368</item>
         <item name="colorPrimary">#002F6C</item>
+        <item name="colorPrimaryContainer">#002F6C</item>
+        <item name="colorSecondaryContainer">#002F6C</item>
+        <item name="colorControlActivated">#002F6C</item>
     </style>
-
-    <style name="Theme.UTTylerMaps" parent="Base.Theme.UTTylerMaps" />
 </resources>

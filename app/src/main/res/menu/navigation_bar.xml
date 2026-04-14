@@ -1,10 +1,17 @@
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
         android:id="@+id/nav_map"
         android:icon="@drawable/map_pin"
         android:title="Map" />
 
+    <item
+        android:id="@+id/nav_favorites"
+        android:icon="@drawable/bookmark"
+        android:title="Favorites"
+
+    />
 
 
     <item

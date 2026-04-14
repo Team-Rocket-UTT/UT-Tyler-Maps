@@ -11,7 +11,9 @@ class FloorManager(private val mapView: MapView) {
         private set
 
     var currentFloor: Floor? = null
-        private set
+
+
+    var onFloorChanged: ((Floor) -> Unit)? = null
 
     fun setFloors(floors: List<Floor>) {
         allFloors = floors.sortedBy { it.name }
@@ -36,13 +38,13 @@ class FloorManager(private val mapView: MapView) {
         }
     }
 
-    //maps indoor atlas floor level number to mappedin floor object
-    //indoor atlas: 1 = ground floor, 2 = second...
+    //maps indoor atlas floor level number to mappedin floor
+    //indoor atlas: 0 = ground floor, 1 = second
     fun findFloorForLevel(floorLevel: Int): Floor? {
-        //change these to match your mappedin floor names
+
         val floorName = when (floorLevel) {
-            1 -> "First Floor"
-            2 -> "Second Floor"
+            0 -> "First Floor"
+            1 -> "Second Floor"
             else -> return null
         }
 

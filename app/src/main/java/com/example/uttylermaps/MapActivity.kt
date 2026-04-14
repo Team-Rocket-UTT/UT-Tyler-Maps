@@ -1,5 +1,6 @@
 package com.example.uttylermaps
 
+import android.annotation.SuppressLint
 import com.example.uttylermaps.BuildConfig
 import android.os.Bundle
 import android.util.Log
@@ -28,6 +29,11 @@ import com.mappedin.models.PointOfInterest
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.view.View
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.remote.creation.first
+import androidx.core.graphics.toColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import com.mappedin.models.Coordinate
 import com.indooratlas.android.sdk.IALocation
 import com.indooratlas.android.sdk.IALocationListener
@@ -39,6 +45,7 @@ import com.mappedin.models.Connection
 import com.mappedin.models.Events
 import com.mappedin.models.FloorUpdateState
 import com.mappedin.models.FollowMode
+import kotlin.onSuccess
 
 
 //from https://developer.mappedin.com/android-sdk
@@ -58,6 +65,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     private var lastLocation: IALocation? = null
     private var hasPermissions = false
     var isFollowingUser = false
+    private var blueDotFloorId: String? = null
+
 
     // managers
     lateinit var floorManager: FloorManager
@@ -90,12 +99,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             } else {
                 val loc = lastLocation
-                val floor = floorManager.currentFloor
+                val floor = blueDotFloorId
                 if (loc == null || floor == null) {
                     android.widget.Toast.makeText(this, "Waiting for location signal...", android.widget.Toast.LENGTH_SHORT).show()
                     return@registerForActivityResult
                 }
-                navigationManager.navigateTo(dest, loc.latitude, loc.longitude, floor.id, accessible)
+                navigationManager.navigateTo(dest, loc.latitude, loc.longitude, floor, accessible)
             }
         }
     }
@@ -104,6 +113,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        when (prefs.getString("theme_preference", "system")) {
+            "light" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+            "dark" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+            else -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        }
         super.onCreate(savedInstanceState)
         isDark = (resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
@@ -111,10 +126,54 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         title = "Display a Map"
 
-
         mapView = MapView(this)
         ui = UIBuilder(this, isDark, mapView)
         setContentView(ui.buildInitialLayout())
+
+        // Enable edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.isNavigationBarContrastEnforced = false
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            private var pressedOnce = false
+
+            override fun handleOnBackPressed() {
+                //close search if open
+                if (ui.materialSearchView.isShowing) {
+                    ui.dismissSearch()
+                    return
+                }
+
+                // dismiss info panel if showing
+                if (navigationManager.isInfoPanelShowing()) {
+                    navigationManager.dismissInfoPanel()
+                    resetHighlightedLabel()
+                    return
+                }
+
+                // stop navigation if active
+                if (navigationManager.isNavigating) {
+                    navigationManager.stopNavigation()
+                    return
+                }
+
+                // clear filter if active
+                if (ui.isFilterActive()) {
+                    ui.clearFilter()
+                    return
+                }
+
+                // double-press to exit
+                if (pressedOnce) {
+                    finish()
+                    return
+                }
+                pressedOnce = true
+                android.widget.Toast.makeText(this@MapActivity, "Press again to exit", android.widget.Toast.LENGTH_SHORT).show()
+                Handler(Looper.getMainLooper()).postDelayed({ pressedOnce = false }, 2000)
+            }
+        })
 
         iaLocationManager = IALocationManager.create(this)
 
@@ -129,17 +188,31 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     }
 
     private fun enableFollowMode() {
-        if (lastLocation == null) return
+        if (lastLocation == null) {
+            android.widget.Toast.makeText(this, "Waiting for location...", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         if (isFollowingUser) {
             mapView.blueDot.follow(mode = null)
             isFollowingUser = false
             ui.setLocationButtonColor("#16A34A")
         } else {
+
+            val userFloor = floorManager.allFloors.find { it.id == blueDotFloorId }
+            if (userFloor != null && floorManager.currentFloor?.id != userFloor.id) {
+                floorManager.switchToFloor(userFloor)
+                ui.highlightFloor(userFloor)
+                syncBlueDotVisibility()
+            }
+
             val mode = if (navigationManager.isNavigating)
                 FollowMode.POSITION_AND_PATH_DIRECTION else FollowMode.POSITION_ONLY
             mapView.blueDot.follow(mode)
             isFollowingUser = true
             ui.setLocationButtonColor("#2563EB")
+
+            // Also move camera to location as fallback
+            moveToUserLocation()
         }
     }
 
@@ -153,9 +226,13 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         mapView.getMapData(options) { result ->
             result.onSuccess {
-                mapView.show3dMap(Show3DMapOptions()) { r ->
-                    r.onSuccess { onMapReady() }
-                    r.onFailure { Log.e("Mappedin", "show3dMap error: $it") }
+                runOnUiThread {
+                    mapView.view.post {
+                        mapView.show3dMap(Show3DMapOptions()) { r ->
+                            r.onSuccess { onMapReady() }
+                            r.onFailure { Log.e("MapLoad", "show3dMap error: $it") }
+                        }
+                    }
                 }
             }.onFailure {
                 Log.e("Mappedin", "getMapData error: $it")
@@ -166,6 +243,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
 
     //this code executes when the map is ready
+    @SuppressLint("ClickableViewAccessibility")
     private fun onMapReady() {
 
         //setup the managers
@@ -173,6 +251,26 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         blueDotManager = BlueDotManager(mapView)
         navigationManager = NavigationManager(this, mapView, ui.container, isDark)
         mapReady = true
+
+        floorManager.onFloorChanged = { displayedFloor ->
+            val userFloor = blueDotFloorId
+            if (userFloor != null && userFloor != displayedFloor.id) {
+                // Viewing different floor — hide blue dot
+                mapView.blueDot.disable()
+            } else {
+                // Back on user's floor — re-enable blue dot
+                blueDotManager.enable()
+                // Re-send position so it shows immediately
+                val loc = lastLocation
+                val floor = floorManager.allFloors.find { it.id == userFloor }
+                if (loc != null && floor != null) {
+                    blueDotManager.updatePosition(
+                        loc.latitude, loc.longitude,
+                        loc.accuracy.toDouble(), floor
+                    )
+                }
+            }
+        }
 
         mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
             result.onSuccess { spaces ->
@@ -183,9 +281,34 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
         }
+        mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
+            result.onSuccess { spaces ->
+                for (space in spaces.take(20)) {
+                    val profiles = space.locationProfiles
+                    if (profiles.isNotEmpty()) {
+                        val profile = profiles.first()
+                        Log.d("SpaceInfo", "name=${space.name}, profileName=${profile}, categories=${profile}")
+                    } else {
+                        Log.d("SpaceInfo", "name=${space.name}, NO profiles")
+                    }
+                }
+            }
+        }
+        mapView.mapData.getByType<com.mappedin.models.LocationCategory>(MapDataType.LOCATION_CATEGORY) { result ->
+            result.onSuccess { categories ->
+
+                for (cat in categories) {
+                    cat
+                    //Log.d("Categories", "id=${cat.id}, name=${cat.name}, parent=${cat.parent}, children=${cat.children}")
+                }
+            }
+        }
 
         runOnUiThread {
             ui.loadingIndicator.visibility = View.GONE
+            ui.container.findViewWithTag<View>("loadingOverlay")?.let {
+                ui.container.removeView(it)
+            }
             ui.buildControls(
                 onLocationClick = { enableFollowMode() },
                 onNavClick = {
@@ -199,6 +322,11 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 onSearchItemClick = { room -> navigateToRoom(room) },
 
             )
+        }
+        mapView.mapData.search.enable { result ->
+            result.onSuccess {
+                Log.d("Search", "Search enabled")
+            }
         }
 
         //make doors visible
@@ -313,39 +441,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
 
         //add safety annotations
-        mapView.mapData.getByType<com.mappedin.models.Annotation>(MapDataType.ANNOTATION) { result ->
-            result.onSuccess { annotations ->
-                for (annotation in annotations) {
-                    val coord = annotation.coordinate ?: continue
-                    val iconUrl = annotation.icon?.url
-
-                    val iconHtml = if (iconUrl != null) {
-                        """<img src="$iconUrl" width="28" height="28" style="display:block;"/>"""
-                    } else {
-                                """<div style="background:red;color:white;border-radius:50%;
-                    width:28px;height:28px;display:flex;align-items:center;
-                    justify-content:center;font-size:14px;">⚠</div>"""
-                    }
-
-                    mapView.markers.add(
-                        target = coord,
-                        html = iconHtml,
-                        options = com.mappedin.models.AddMarkerOptions(
-                            interactive = AddMarkerOptions.Interactive.True,
-                            rank = AddMarkerOptions.Rank.Tier(CollisionRankingTier.MEDIUM)
-
-                        )
-                    ) { markerResult ->
-                        markerResult.onSuccess { marker ->
-                            if (marker != null) {
-                                annotationMarkerMap[marker.id] = annotation
-
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        val showAnnotations = prefs.getBoolean("show_safety_annotations", true)
+        loadAnnotations()
         val stairsSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
 
         val elevatorSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
@@ -385,6 +482,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 runOnUiThread {
                     ui.buildFloorSwitcher(floors) { floor ->
                         floorManager.switchToFloor(floor)
+                        syncBlueDotVisibility()
                     }
                     floorManager.currentFloor?.let { ui.highlightFloor(it) }
                 }
@@ -413,24 +511,13 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         // Listen for space click
         mapView.on(Events.Click) { payload ->
-            //first cancel previous ones
-            resetRunnable?.let { resetHandler.removeCallbacks { it }}
+            resetRunnable?.let { resetHandler.removeCallbacks(it) }
 
             val coordinate = payload?.coordinate
             Log.d("Coords", "lat=${coordinate?.latitude}, lon=${coordinate?.longitude}")
             val labels = payload?.labels
             Log.d("Highlight", "Click event - labels: ${labels?.size ?: 0}")
 
-            /*
-            val clickedSpace: Space? = when {
-                !labels.isNullOrEmpty() -> {
-                    val labelName = labels[0].text
-                    allSpaces.find { it.name == labelName }
-                }
-                else -> null
-            }
-             */
-            //check if they tapped a room first then the name
             val clickedSpace = payload?.spaces?.firstOrNull()
                 ?: payload?.labels?.firstOrNull()?.let { label ->
                     allSpaces.find { it.name == label.text }
@@ -438,7 +525,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
             val clickedMarker = payload?.markers?.firstOrNull()
             if (clickedMarker != null) {
-                // Find which annotation this marker belongs to
                 val markerId = clickedMarker.id
                 val annotation = annotationMarkerMap[markerId]
                 if (annotation != null) {
@@ -453,9 +539,34 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
 
+
+
+            // During filter mode only allow clicking filtered spaces
+            if (ui.isFilterActive()) {
+                if (clickedSpace != null && clickedSpace.name.isNotBlank()) {
+                    runOnUiThread {
+                        navigationManager.showSpaceInfoPanel(
+                            space = clickedSpace,
+                            hasLocation = lastLocation != null,
+                            onDirections = {
+                                val loc = lastLocation
+                                val floor = blueDotFloorId  // use blue dot floor, not displayed floor
+
+                                if (loc == null || floor == null) return@showSpaceInfoPanel
+                                val accessible = prefs.getBoolean("accessible_routes", false)
+                                syncBlueDotVisibility()
+                                navigationManager.navigateTo(clickedSpace, loc.latitude, loc.longitude, floor, accessible)
+                                Handler(Looper.getMainLooper()).postDelayed({ syncBlueDotVisibility() }, 1000)
+                            }
+                        )
+                    }
+                }
+                return@on
+            }
+
+            //no filters
             Log.d("Highlight", "clickedSpace: ${clickedSpace?.name ?: "null"}, highlighted: ${highlightedLabelSpace?.name ?: "null"}")
 
-            // Reset previous highlight
             resetHighlightedLabel()
 
             if (clickedSpace == null) {
@@ -478,30 +589,21 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                         hasLocation = lastLocation != null,
                         onDirections = {
                             val loc = lastLocation
-                            val currentFloor = floorManager.currentFloor
-
-                            if (loc == null || currentFloor == null) {
+                            val floor = blueDotFloorId  // use blue dot floor, not displayed floor
+                            if (loc == null || floor == null) {
                                 Log.e("NavTest", "Missing location or floor")
                                 return@showSpaceInfoPanel
                             }
                             val accessible = prefs.getBoolean("accessible_routes", false)
-
-                            Log.d("Navigation", "From floor=${currentFloor.id} to space=${clickedSpace.name} on floor=${clickedSpace.floor}")
-
-                            navigationManager.navigateTo(
-                                destination = clickedSpace,
-                                userLat = loc.latitude,
-                                userLon = loc.longitude,
-                                floorId = currentFloor.id,
-                                accessible = accessible
-
-                            )
+                            syncBlueDotVisibility()
+                            navigationManager.navigateTo(clickedSpace, loc.latitude, loc.longitude, floor, accessible)
+                            syncBlueDotVisibility()
                         }
                     )
                 }
             }
-        }
 
+        }
 
         //to track tapping away
         mapView.view.setOnTouchListener { _, _ ->
@@ -511,27 +613,82 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             }
             ui.dismissSearch()
 
-            resetRunnable?.let { resetHandler.removeCallbacks(it) }
-            resetRunnable = Runnable {
-                resetHighlightedLabel()
-                navigationManager.dismissInfoPanel()
+            if (!ui.isFilterActive()) {
+                resetRunnable?.let { resetHandler.removeCallbacks(it) }
+                resetRunnable = Runnable {
+                    resetHighlightedLabel()
+                    navigationManager.dismissInfoPanel()
+                }
+                resetHandler.postDelayed(resetRunnable!!, 300)
             }
-            resetHandler.postDelayed(resetRunnable!!, 300)
             false
         }
+        // Step 1: Set blue dot on first floor (your existing code)
+        Handler(Looper.getMainLooper()).postDelayed({
+            val firstFloor = floorManager.allFloors.find { it.name.contains("First", ignoreCase = true) }
+            setFakeLocation(32.31302445024953, -95.25148019466819, firstFloor)
+            Log.d("FakeTest", "Blue dot pinned to First Floor")
+        }, 5000)
 
+        //listen for floor changes
+        mapView.on(Events.FloorChange) { payload ->
+            val newFloor = payload?.floor ?: return@on
+            // Update FloorManager's tracked floor without calling setFloor again
+            floorManager.currentFloor = floorManager.allFloors.find{it.id == newFloor.id}
+
+            runOnUiThread {
+                ui.highlightFloor((floorManager.currentFloor!!))
+                syncBlueDotVisibility()
+            }
+        }
+
+
+
+
+
+
+    }//oonmapready
+
+    private fun loadAnnotations() {
+        // Remove existing ones first
+        mapView.markers.removeAll {  }
+
+
+        val showAnnotations = prefs.getBoolean("show_safety_annotations", true)
+        if (!showAnnotations) return
+
+        mapView.mapData.getByType<com.mappedin.models.Annotation>(MapDataType.ANNOTATION) { result ->
+            result.onSuccess { annotations ->
+                for (annotation in annotations) {
+                    val coord = annotation.coordinate
+                    val iconUrl = annotation.icon?.url
+
+                    val iconHtml = if (iconUrl != null) {
+                        """<img src="$iconUrl" width="28" height="28" style="display:block;"/>"""
+                    } else {
+                        """<div style="background:red;color:white;border-radius:50%;
+                        width:28px;height:28px;display:flex;align-items:center;
+                        justify-content:center;font-size:14px;">⚠</div>"""
+                    }
+
+                    mapView.markers.add(
+                        target = coord,
+                        html = iconHtml,
+                        options = com.mappedin.models.AddMarkerOptions(
+                            interactive = AddMarkerOptions.Interactive.True,
+                            rank = AddMarkerOptions.Rank.Tier(CollisionRankingTier.MEDIUM)
+                        )
+                    )
+                }
+            }
+        }
     }
 
-    private fun setFakeLocation(lat: Double, lon: Double) {
-        val floor = floorManager.currentFloor ?: return
+    private fun setFakeLocation(lat: Double, lon: Double, floor: Floor? = null) {
+        val targetFloor = floor ?: floorManager.currentFloor ?: return
+        blueDotFloorId = targetFloor.id  // track it here too
 
-        blueDotManager.updatePosition(
-            lat = lat,
-            lon = lon,
-            accuracy = 3.0,
-            floor = floor
-        )
-
+        blueDotManager.updatePosition(lat, lon, 3.0, targetFloor)
         lastLocation = IALocation.from(android.location.Location("fake").apply {
             latitude = lat
             longitude = lon
@@ -616,6 +773,117 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         )
     }
 
+    fun reAddAllLabels() {
+        mapView.labels.removeAll()
+
+        val restroomIcon = """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+          <path d="M5.5 22v-7.5H4V9c0-1.1.9-2 2-2h3c1.1 0 2 .9 2 2v5.5H9.5V22h-4zm12.5 0v-6h3l-2.54-7.63C18.18 7.55 17.42 7 16.56 7h-.12c-.86 0-1.63.55-1.9 1.37L12 16h3v6h3zM7.5 6c1.11 0 2-.89 2-2s-.89-2-2-2-2 .89-2 2 .89 2 2 2zm9 0c1.11 0 2-.89 2-2s-.89-2-2-2-2 .89-2 2 .89 2 2 2z"/>
+        </svg>
+        """
+
+        val elevatorIcon = """
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 8H17C17.5523 8 18 8.44772 18 9V19C18 19.5523 17.5523 20 17 20H12M12 8H7C6.44772 8 6 8.44772 6 9V19C6 19.5523 6.44772 20 7 20H12M12 8V20M7.5 4.5L9 3L10.5 4.5M13.5 3L15 4.5L16.5 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
+"""
+
+        val stairsIcon ="""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+
+
+
+
+        mapView.mapData.getByType<Space>(MapDataType.SPACE) { result ->
+            result.onSuccess { spaces ->
+                for (space in spaces) {
+                    if (space.name.isNotEmpty()) {
+                        val isAmenity = space.name.contains("Restroom", ignoreCase = true) ||
+                                space.name.contains("Elevator", ignoreCase = true) ||
+                                space.name.contains("Stair", ignoreCase = true)
+
+                        val icon = when {
+                            space.name.contains("Restroom", ignoreCase = true) -> restroomIcon
+                            space.name.contains("Elevator", ignoreCase = true) -> elevatorIcon
+                            space.name.contains("Stair", ignoreCase = true) -> stairsIcon
+                            else -> null
+                        }
+                        val bgColor = when {
+                            space.name.contains("Restroom", ignoreCase = true) -> "#4e7498"
+                            space.name.contains("Elevator", ignoreCase = true) -> "#15803D"
+                            space.name.contains("Stair", ignoreCase = true) -> "#15803D"
+                            else -> null
+                        }
+
+                        if (isAmenity && icon != null) {
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = LabelAppearance(
+                                        icon = icon,
+                                        color = bgColor,
+                                        iconVisibleAtZoomLevel = .7
+                                    ),
+                                    interactive = true,
+                                    rank = if(isAmenity) CollisionRankingTier.HIGH else null
+                                ),
+                            ) { result ->
+                                result.onSuccess { label ->
+                                    if (label != null) labelMap[space.name] = label
+                                }
+                            }
+                        } else {
+                            // Regular room just text label
+                            mapView.labels.add(
+                                target = space,
+                                text = space.name,
+                                options = AddLabelOptions(
+                                    labelAppearance = LabelAppearance(),
+                                    interactive = true,
+                                ),
+                            ) { result ->
+                                result.onSuccess { label ->
+                                    if (label != null) labelMap[space.name] = label
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val stairsSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+
+        val elevatorSvg = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
+
+
+        mapView.mapData.getByType<com.mappedin.models.Connection>(MapDataType.CONNECTION) { result ->
+            result.onSuccess { connections ->
+                for (connection in connections) {
+                    val icon = if (connection.type == Connection.ConnectionType.STAIRS) {
+                        """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3h-4v4h-4v4H7v4H3v6h4v-4h4v-4h4V9h4V3z"/></svg>"""
+                    } else {
+                        """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M7 2l5 5H2zm10 0l5 5h-10zM7 22l5-5H2zm10 0l5-5h-10z"/></svg>"""
+                    }
+
+                    connection.coordinates.forEach { coordinate ->
+                        mapView.labels.add(
+                            target = coordinate,
+                            text = "",
+                            options = AddLabelOptions(
+                                labelAppearance = LabelAppearance(
+                                    color = "#15803D",
+                                    icon = icon,
+
+                                    ),
+                                rank = CollisionRankingTier.MEDIUM
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     // --- indoor atlas callbacks ---
 
@@ -626,6 +894,9 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 IALocationRequest.create(),
                 this
             )
+        }
+        if (mapReady) {
+            loadAnnotations()
         }
     }
 
@@ -663,7 +934,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             return
         }
 
-        val mappedFloor = floorManager.findFloorForLevel(location.floorLevel)
+        val mappedFloor = floorManager.findFloorForLevel(location.floorLevel) ?: return
+        blueDotFloorId = mappedFloor.id  // track actual user floor
         if (mappedFloor == null) {
             Log.w("BlueDot", "No Mappedin floor found for IA floorLevel=${location.floorLevel}")
             return
@@ -675,12 +947,14 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         )
         //if auto floor switch is enabled, switch floors
         val autoSwitch = prefs.getBoolean("auto_floor_switch", true)
-        if (autoSwitch) {
+        if (autoSwitch && floorManager.currentFloor?.id != mappedFloor.id) {
             floorManager.switchToFloor(mappedFloor)
+            runOnUiThread { ui.highlightFloor(mappedFloor) }
         }
         runOnUiThread {
             ui.highlightFloor(mappedFloor)
         }
+        syncBlueDotVisibility()
 
         blueDotManager.updatePosition(
             lat = location.latitude,
@@ -694,6 +968,22 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             )
         }
 
+    }
+    //to keep blue dot visible after swapping floors
+    fun syncBlueDotVisibility() {
+        val userFloor = blueDotFloorId ?: return
+        val displayedFloor = floorManager.currentFloor?.id ?: return
+
+        if (userFloor != displayedFloor) {
+            mapView.blueDot.disable()
+        } else {
+            blueDotManager.enable()
+            val loc = lastLocation
+            val floor = floorManager.allFloors.find { it.id == userFloor }
+            if (loc != null && floor != null) {
+                blueDotManager.updatePosition(loc.latitude, loc.longitude, loc.accuracy.toDouble(), floor)
+            }
+        }
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {

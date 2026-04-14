@@ -61,6 +61,7 @@ dependencies {
     implementation("com.indooratlas.android:indooratlas-android-sdk:3.8.0@aar")
     implementation(libs.androidx.preference)
     implementation(libs.androidx.espresso.core)
+    implementation(libs.androidx.remote.creation.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

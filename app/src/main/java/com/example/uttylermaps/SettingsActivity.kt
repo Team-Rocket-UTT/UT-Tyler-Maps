@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SwitchPreferenceCompat
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -36,6 +37,12 @@ class SettingsActivity : AppCompatActivity() {
 
                 true
 
+            }
+
+            val annotationPref = findPreference<SwitchPreferenceCompat>("show_safety_annotations")
+            annotationPref?.setOnPreferenceChangeListener { _, newValue ->
+                // The map will reload the setting next time MapActivity resumes
+                true
             }
 
         }

@@ -2,6 +2,7 @@ package com.example.uttylermaps
 
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
@@ -10,6 +11,7 @@ import android.widget.ListView
 import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import com.mappedin.MapView
+import com.mappedin.models.AddMarkerOptions
 import com.mappedin.models.Coordinate
 import com.mappedin.models.Directions
 import com.mappedin.models.NavigationTarget
@@ -17,6 +19,7 @@ import com.mappedin.models.PathSectionHighlightOptions
 import com.mappedin.models.Space
 import com.mappedin.models.NavigationOptions
 import com.mappedin.models.AddPathOptions
+import com.mappedin.models.CollisionRankingTier
 import com.mappedin.models.GetDirectionsOptions
 
 class NavigationManager(
@@ -49,7 +52,7 @@ class NavigationManager(
 
     private val navOptions = NavigationOptions(
         pathOptions = AddPathOptions(
-            color = "#4b90e2",
+            color = "#002F6C",
             displayArrowsOnPath = true,
             animateDrawing = true
         ),
@@ -723,11 +726,13 @@ class NavigationManager(
 
                     mapView.navigation.draw(directions, navOptions) { drawResult ->
                         drawResult.onSuccess {
+                            addInstructionMarkers(directions, destination.name)
                             activity.runOnUiThread {
-                                showNavigationPanel(destination, directions.distance)
+                                showNavigationPanel(destination, directions)
                             }
                         }
                     }
+
                 } else {
                     fallbackNavigate(destination, userLat, userLon, floorId)
                 }
@@ -782,28 +787,26 @@ class NavigationManager(
     private fun drawNavigation(destination: Space, directions: Directions) {
         mapView.navigation.clear()
         mapView.paths.removeAll()
-
-
+        mapView.markers.removeAll()
 
         mapView.navigation.draw(directions, navOptions) { drawResult ->
             drawResult.onSuccess {
                 activeDestination = destination
+                currentDirections = directions
                 isNavigating = true
+                addInstructionMarkers(directions, destination.name)
                 activity.runOnUiThread {
-                    showNavigationPanel(destination, directions.distance)
+                    showNavigationPanel(destination, directions)
                 }
-            }
-            drawResult.onFailure {
-                Log.e("Navigation", "Failed to draw", it)
             }
         }
     }
 
-    private fun showNavigationPanel(destination: Space, distance: Double) {
+    private fun showNavigationPanel(destination: Space, directions: Directions) {
         dismissNavigationPanel()
 
-        val distanceText = if (distance < 1000) "${distance.toInt()}m"
-        else "${"%.1f".format(distance / 1000)}km"
+        val distanceText = if (directions.distance < 1000) "${directions.distance.toInt()}m"
+        else "${"%.1f".format(directions.distance / 1000)}km"
 
         navigationPanel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -814,6 +817,7 @@ class NavigationManager(
                 setColor(bgColor)
             }
 
+            // Title
             addView(TextView(activity).apply {
                 text = "Navigating to ${destination.name}"
                 setTextColor(this@NavigationManager.textColor)
@@ -821,6 +825,7 @@ class NavigationManager(
                 setTypeface(null, android.graphics.Typeface.BOLD)
             })
 
+            // Distance
             addView(TextView(activity).apply {
                 text = distanceText
                 setTextColor(if (isDark) "#AAAAAA".toColorInt() else "#666666".toColorInt())
@@ -831,6 +836,90 @@ class NavigationManager(
                 ).apply { topMargin = 8 }
             })
 
+            // Turn-by-turn instructions
+            val instructions = directions.instructions
+            if (instructions.isNotEmpty()) {
+                val scrollView = android.widget.ScrollView(activity).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        400  // max height for the instruction list
+                    ).apply { topMargin = 16 }
+                }
+
+                val stepsColumn = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, 8, 0, 8)
+                }
+
+                for (i in instructions.indices) {
+                    val instruction = instructions[i]
+                    val isLast = i == instructions.size - 1
+                    val nextInstruction = if (!isLast) instructions[i + 1] else null
+
+                    val stepText = if (isLast) {
+                        "Arrive at ${destination.name}"
+                    } else {
+                        formatInstruction(instruction, nextInstruction, isLast, destination.name)
+                    }
+
+                    /*val iconRes = when {
+                        isLast -> android.R.drawable.ic_menu_myplaces
+                        stepText.contains("Turn", ignoreCase = true) -> android.R.drawable.ic_menu_directions
+                        //else -> android.R.drawable.ic_menu_forward
+                    }
+
+
+                     */
+                    stepsColumn.addView(LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(0, 16, 0, 16)
+
+                        // Step number circle
+                        addView(TextView(activity).apply {
+                            text = "${i + 1}"
+                            textSize = 13f
+                            gravity = android.view.Gravity.CENTER
+                            setTextColor(android.graphics.Color.WHITE)
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                shape = android.graphics.drawable.GradientDrawable.OVAL
+                                setColor("#2563EB".toColorInt())
+                                setSize(64, 64)
+                            }
+                            layoutParams = LinearLayout.LayoutParams(64, 64).apply {
+                                marginEnd = 20
+                            }
+                        })
+
+                        // Step text
+                        addView(TextView(activity).apply {
+                            text = stepText
+                            textSize = 14f
+                            setTextColor(this@NavigationManager.textColor)
+                            layoutParams = LinearLayout.LayoutParams(
+                                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                            )
+                        })
+                    })
+
+                    // Divider between steps
+                    if (!isLast) {
+                        stepsColumn.addView(android.view.View(activity).apply {
+                            setBackgroundColor(
+                                if (isDark) "#333333".toColorInt() else "#E0E0E0".toColorInt()
+                            )
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, 1
+                            ).apply { marginStart = 84 }
+                        })
+                    }
+                }
+
+                scrollView.addView(stepsColumn)
+                addView(scrollView)
+            }
+
+            // Stop button
             addView(Button(activity).apply {
                 text = "Stop Navigation"
                 isAllCaps = false
@@ -852,7 +941,7 @@ class NavigationManager(
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM
-            bottomMargin = 180  // above the bottom nav bar
+            bottomMargin = 180
         }
         container.addView(navigationPanel, params)
     }
@@ -874,8 +963,9 @@ class NavigationManager(
                     isNavigating = true
                     mapView.navigation.draw(directions, navOptions) { drawResult ->
                         drawResult.onSuccess {
+                            addInstructionMarkers(directions, destination.name)
                             activity.runOnUiThread {
-                                showNavigationPanel(destination, directions.distance)
+                                showNavigationPanel(destination, directions)
                             }
                         }
                     }
@@ -946,11 +1036,13 @@ class NavigationManager(
 
     fun stopNavigation() {
         mapView.navigation.clear()
+        mapView.markers.removeAll()
         mapView.paths.removeAll()
         isNavigating = false
         dismissNavigationPanel()
         dismissPlanPanel()
         activeDestination = null
+        currentDirections = null
     }
 
     fun startLiveNavigation(destination: Space) {
@@ -983,6 +1075,98 @@ class NavigationManager(
             )
         }
     }
+    private fun addInstructionMarkers(directions: Directions, destinationName: String) {
+        val instructions = directions.instructions
+
+        for (i in instructions.indices) {
+            val instruction = instructions[i]
+            val nextInstruction = if (i < instructions.size - 1) instructions[i + 1] else null
+            val isLast = i == instructions.size - 1
+            val distance = nextInstruction?.distance?.toInt() ?: 0
+
+            // Skip non-last instructions with no distance
+            if (!isLast && distance <= 0) continue
+
+            val markerText = formatInstruction(instruction, nextInstruction, isLast, destinationName)
+
+            val bgColor = if (isLast) "#358320" else "#002F6C"
+
+            val markerTemplate = """
+            <div style="
+                background: $bgColor;
+                color: white;
+                padding: 4px 10px;
+                border-radius: 16px;
+                font-family: -apple-system, sans-serif;
+                font-size: 10px;
+                white-space: nowrap;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            ">
+                <span>${i + 1}. $markerText</span>
+            </div>
+        """.trimIndent()
+
+            mapView.markers.add(
+                instruction.coordinate,
+                markerTemplate,
+                AddMarkerOptions(
+                    rank = AddMarkerOptions.Rank.Tier(CollisionRankingTier.ALWAYS_VISIBLE),
+                ),
+            ) { }
+        }
+    }
+    private fun formatInstruction(
+        instruction: com.mappedin.models.DirectionInstruction,
+        nextInstruction: com.mappedin.models.DirectionInstruction?,
+        isLast: Boolean,
+        destinationName: String
+    ): String {
+        if (isLast) return "Arrive at $destinationName"
+
+        val action = instruction.action.type?.toString() ?: ""
+        val bearing = instruction.action.bearing?.toString() ?: ""
+        val connectionType = instruction.action.connectionType?.toString() ?: ""
+        val direction = instruction.action.direction?.toString() ?: ""
+        val distance = nextInstruction?.distance?.toInt() ?: 0
+
+        val actionText = when {
+            // Connections with specific type
+            action.equals("TAKE_CONNECTION", ignoreCase = true) && connectionType.contains("ELEVATOR", ignoreCase = true) ->
+                "Take the elevator ${direction.lowercase()}"
+            action.equals("TAKE_CONNECTION", ignoreCase = true) && connectionType.contains("STAIRS", ignoreCase = true) ->
+                "Take the stairs ${direction.lowercase()}"
+            action.equals("TAKE_CONNECTION", ignoreCase = true) ->
+                "Take the connection ${direction.lowercase()}"
+            action.equals("EXIT_CONNECTION", ignoreCase = true) && connectionType.contains("ELEVATOR", ignoreCase = true) ->
+                "Exit the elevator"
+            action.equals("EXIT_CONNECTION", ignoreCase = true) && connectionType.contains("STAIRS", ignoreCase = true) ->
+                "Exit the stairs"
+            action.equals("EXIT_CONNECTION", ignoreCase = true) ->
+                "Exit and continue"
+
+            // Turns
+            action.equals("TURN", ignoreCase = true) -> when {
+                bearing.equals("LEFT", ignoreCase = true) -> "Turn left"
+                bearing.equals("RIGHT", ignoreCase = true) -> "Turn right"
+                bearing.equals("SLIGHT_LEFT", ignoreCase = true) -> "Turn slight left"
+                bearing.equals("SLIGHT_RIGHT", ignoreCase = true) -> "Turn slight right"
+                bearing.equals("BEAR_LEFT", ignoreCase = true) -> "Bear left"
+                bearing.equals("BEAR_RIGHT", ignoreCase = true) -> "Bear right"
+                else -> "Turn $bearing".lowercase().replaceFirstChar { it.uppercase() }
+            }
+
+            // Departure
+            action.equals("DEPARTURE", ignoreCase = true) -> "Depart"
+
+            // Straight
+            action.equals("STRAIGHT", ignoreCase = true) -> "Continue straight"
+
+            // Fallback
+            else -> action.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+        }
+
+        return if (distance > 0) "$actionText and go $distance meters" else actionText
+    }
 
 /*if (shouldReroute(userLat, userLon, floorId) && !isRerouting) {
             rerouteToDestination(dest, userLat, userLon, floorId)
@@ -1011,11 +1195,11 @@ class NavigationManager(
             }
         }
     }
-
-    // Keep your existing showNavigationDialog if you still need it
-    fun showNavigationDialog(allSpaces: List<Space>) {
-        // your existing dialog code
+    fun isInfoPanelShowing(): Boolean {
+        // return whether your info panel view is visible
+        return infoPanel?.visibility == View.VISIBLE
     }
+
 }
 
 
