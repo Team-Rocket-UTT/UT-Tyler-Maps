@@ -211,6 +211,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
             }
         })
 
+
         iaLocationManager = IALocationManager.create(this)
 
         val permissions = mutableListOf(android.Manifest.permission.ACCESS_FINE_LOCATION)

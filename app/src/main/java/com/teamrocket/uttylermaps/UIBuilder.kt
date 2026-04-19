@@ -167,6 +167,7 @@ class UIBuilder(
         myLocationButton = FloatingActionButton(activity).apply {
             setImageResource(android.R.drawable.ic_menu_mylocation)
             backgroundTintList = ColorStateList.valueOf("#657085".toColorInt())
+            imageTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
@@ -199,6 +200,7 @@ class UIBuilder(
             size = FloatingActionButton.SIZE_NORMAL
             setImageResource(R.drawable.directions)
             backgroundTintList = ColorStateList.valueOf("#002F6C".toColorInt())
+            imageTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
