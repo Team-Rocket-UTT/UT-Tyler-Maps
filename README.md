@@ -19,8 +19,13 @@ The app allows users to find rooms and get directions.
    git clone https://github.com/Team-Rocket-UTT/UT-Tyler-Maps.git
    ```
 3. Open the project in Android Studio.
-4. Add your API keys to the .env file.
-5. Build and run the app.
+4. Add your API keys to the local.properties file:
+   ```
+   MAPPEDIN_KEY= 
+   MAPPEDIN_SECRET= 
+   MAPPEDIN_MAP_ID=
+   ```
+6. Build and run the app.
     
 ## Contributing
 1. Clone the repository
