@@ -13,11 +13,29 @@ import android.widget.ListView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.toColorInt
 
+/**
+ * Activity for selecting origin and destination rooms before starting navigation.
+ *
+ * Presents two input fields (origin and destination) with a searchable room list. The user
+ * can type to filter rooms, tap a result to select it, and swap origin/destination with the
+ * swap button. The origin field defaults to "Your location" (meaning the user's live
+ * IndoorAtlas position), but can be changed to a specific room for space-to-space routing.
+ *
+ * Recent search history is displayed when inputs are focused but empty. Results are returned
+ * to [MapActivity] via [Activity.RESULT_OK] with `origin_room` and `dest_room` extras.
+ *
+ * @see MapActivity.navLauncher which launches this activity and processes the result
+ * @see SearchHistory for recent search persistence
+ */
 class NavigationActivity : AppCompatActivity() {
 
-    private var selectedOrigin: String? = null   // null means current user location
+    /** The selected origin room name, or `null` to use the user's current location. */
+    private var selectedOrigin: String? = null
+    /** The selected destination room name, or `null` if not yet chosen. */
     private var selectedDest: String? = null
+    /** Tracks whether the user is currently editing the origin field (`true`) or destination (`false`). */
     private var editingOrigin = false
+    /** Whether the app is currently in dark mode. */
     private var isDark = false
 
     private lateinit var originInput: EditText
@@ -29,8 +47,18 @@ class NavigationActivity : AppCompatActivity() {
     private val filteredNames = mutableListOf<String>()
     private lateinit var adapter: android.widget.BaseAdapter
     private var roomNames: List<String> = emptyList()
+    /** Guard flag to prevent the text watcher from firing during a programmatic swap. */
     private var isSwapping = false
 
+    /**
+     * Called when the activity is first created.
+     *
+     * Reads the list of room names and optional pre-filled destination from the launching
+     * intent, initializes the search history and list adapter, builds the UI layout, and
+     * focuses the destination input field.
+     *
+     * @param savedInstanceState the previously saved instance state, if any
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -89,6 +117,17 @@ class NavigationActivity : AppCompatActivity() {
         destInput.requestFocus()
     }
 
+    //layout adapted from https://www.geeksforgeeks.org/android/linearlayout-and-its-important-attributes-with-examples-in-android/
+    /**
+     * Constructs the entire activity layout programmatically.
+     *
+     * Builds the back button, origin and destination input fields, swap button, divider,
+     * start/show-route button, and the search results list. Attaches text watchers to
+     * both input fields for real-time filtering, and sets up item click listeners to
+     * populate the selected room.
+     *
+     * @return the root [LinearLayout] to be set as the content view
+     */
     private fun buildLayout(): LinearLayout {
         val bgColor = if (isDark) "#1E1E1E".toColorInt() else "#FFFFFF".toColorInt()
         val inputBg = if (isDark) "#303134".toColorInt() else "#F1F3F4".toColorInt()
@@ -356,6 +395,13 @@ class NavigationActivity : AppCompatActivity() {
         return root
     }
 
+    /**
+     * Swaps the origin and destination field values and their backing selections.
+     *
+     * Sets the [isSwapping] guard to prevent the text watcher from reacting to
+     * programmatic text changes during the swap. If the new origin would be blank,
+     * it defaults back to "Your location".
+     */
     private fun swapFields() {
         isSwapping = true
 
@@ -383,6 +429,13 @@ class NavigationActivity : AppCompatActivity() {
         isSwapping = false
     }
 
+    /**
+     * Updates the start button's enabled state and label based on the current selections.
+     *
+     * The button is enabled only when a destination is selected. Its text changes to
+     * "Show Route" when a specific origin room is selected, or "Start Navigation" when
+     * using the user's current location as the origin.
+     */
     private fun updateStartButton() {
         val ready = !selectedDest.isNullOrBlank()
         startButton.isEnabled = ready

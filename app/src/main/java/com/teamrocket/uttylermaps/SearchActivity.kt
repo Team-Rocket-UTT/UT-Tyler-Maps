@@ -9,15 +9,38 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import androidx.appcompat.app.AppCompatActivity
 
+/**
+ * Simple search activity for finding rooms by name or category.
+ *
+ * Provides a text input for free-text search and quick-filter buttons for common
+ * categories (Restrooms, Offices, Classrooms). The filtered results are displayed
+ * in a [ListView]; tapping a result returns the selected room name to the calling
+ * activity via [Activity.RESULT_OK] with a `selected_room` extra.
+ *
+ * This activity receives the full list of room names via the `room_names` intent extra.
+ *
+ * @see NavigationActivity for the primary navigation entry point used in the app
+ */
 class SearchActivity : AppCompatActivity() {
 
     private lateinit var searchInput: EditText
     private lateinit var resultsList: ListView
     private lateinit var adapter: ArrayAdapter<String>
 
+    /** The complete list of room names received from the launching intent. */
     private var allRooms: List<String> = emptyList()
+    /** The currently filtered subset of rooms displayed in the results list. */
     private var filteredRooms: MutableList<String> = mutableListOf()
 
+    /**
+     * Called when the activity is first created.
+     *
+     * Reads the room name list from the intent, builds the UI with a search input,
+     * quick-filter buttons, and a results list. Attaches a text watcher for real-time
+     * filtering and an item click listener to return the selected room.
+     *
+     * @param savedInstanceState the previously saved instance state, if any
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -86,6 +109,13 @@ class SearchActivity : AppCompatActivity() {
         setContentView(root)
     }
 
+    /**
+     * Filters the room list by a text query using case-insensitive substring matching.
+     *
+     * If the query is blank, all rooms are shown. Updates the adapter to refresh the list.
+     *
+     * @param query the search string to filter rooms by
+     */
     private fun filterRooms(query: String) {
         val q = query.trim().lowercase()
 
@@ -100,6 +130,12 @@ class SearchActivity : AppCompatActivity() {
         adapter.notifyDataSetChanged()
     }
 
+    /**
+     * Filters the room list to show only rooms that contain digits in their name.
+     *
+     * This serves as a heuristic for identifying classrooms, which typically have
+     * numeric room numbers (e.g., "RBN 2020", "HPR 115").
+     */
     private fun filterClassrooms() {
         filteredRooms.clear()
         filteredRooms.addAll(

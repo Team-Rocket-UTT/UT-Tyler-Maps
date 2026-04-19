@@ -7,6 +7,8 @@ val localProps = Properties().apply{
 }
 plugins {
     alias(libs.plugins.android.application)
+    id("org.jetbrains.dokka")
+    id("org.jetbrains.dokka-javadoc")
 }
 
 android {
@@ -17,7 +19,7 @@ android {
 
     defaultConfig {
         applicationId = "com.teamrocket.uttylermaps"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -67,3 +69,13 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
 
 }
+dokka {
+    moduleName.set("UT Tyler Maps")
+    dokkaPublications.configureEach {
+        suppressInheritedMembers.set(true)
+    }
+}
+
+tasks.named("dokkaGenerateHtml") {
+    dependsOn("assembleDebug")
+}//removed unused methods from imports

@@ -24,34 +24,80 @@ import com.mappedin.MapView
 import com.mappedin.models.Floor
 import com.mappedin.models.Space
 
+/**
+ * Builds and manages all UI elements for the [MapActivity] programmatically.
+ *
+ * This class constructs the full view hierarchy without XML layouts, including the map container,
+ * loading overlay, search bar with Material SearchView, category filter chips, floor switcher,
+ * floating action buttons (location and navigation), and the bottom navigation bar. It also
+ * handles category-based room filtering by highlighting matching spaces on the map and
+ * dimming non-matching ones.
+ *
+ * All UI elements are theme-aware, adapting colors and styling based on [isDark].
+ *
+ * @property activity the parent [MapActivity] for context and access to shared state
+ * @property isDark whether the app is in dark mode
+ * @property mapView the [MapView] whose view is embedded in the layout
+ * @see MapActivity.onMapReady where [buildControls] is called after the map loads
+ */
 class UIBuilder(
     private val activity: MapActivity,
     private val isDark: Boolean,
     private val mapView: MapView
 ) {
 
+    /** Progress spinner displayed while the map is loading. */
     lateinit var loadingIndicator: ProgressBar
+
+    /** Root [FrameLayout] that contains the map view and all overlay UI elements. */
     lateinit var container: FrameLayout
+
+    /** Floating action button that opens the [NavigationActivity]. */
     lateinit var startNavButton: FloatingActionButton
+
+    /** Floating action button that toggles camera follow mode on the user's location. */
     lateinit var myLocationButton: FloatingActionButton
+
+    /** Container for the search bar and category chips at the top of the screen. */
     lateinit var searchOverlay: LinearLayout
+
+    /** ListView that displays filtered room search results. */
     lateinit var searchResults: ListView
-    // Change field type:
+
+    /** Adapter backing the [searchResults] ListView. */
     lateinit var searchAdapter: SearchResultAdapter
 
+    /** Material Design search bar (collapsed pill). */
     lateinit var materialSearchBar: SearchBar
+
+    /** Material Design search view (expanded full-screen overlay). */
     lateinit var materialSearchView: MaterialSearchView
+
+    /** Bottom navigation bar with Map, Favorites, and Settings tabs. */
     lateinit var bottomNav: BottomNavigationView
+
+    /** Mutable list of room names currently matching the search query. */
     var filteredRooms: MutableList<String> = mutableListOf()
+
+    /** All spaces available on the map, set by [MapActivity] after map data loads. */
     var allSpaces: List<Space> = emptyList()
+
+    /** Manages recent search history stored in SharedPreferences. */
     val searchHistory by lazy{ SearchHistory(activity)}
 
     private lateinit var floorChipGroup: LinearLayout
     private var floorChips = mutableMapOf<String, TextView>()
 
 
-    // ── Initial layout (before map loads) ──
-
+    /**
+     * Creates the initial layout shown while the map is loading.
+     *
+     * Builds a [FrameLayout] containing the [MapView], a colored overlay to hide the
+     * unloaded map, and a centered progress spinner. The overlay and spinner are removed
+     * in [MapActivity.onMapReady] once the map finishes loading.
+     *
+     * @return the root [FrameLayout] to be set as the activity's content view
+     */
     fun buildInitialLayout(): FrameLayout {
         container = FrameLayout(activity)
         container.setPadding(0, 0, 0, 0)
@@ -86,8 +132,18 @@ class UIBuilder(
         return container
     }
 
-    // ── Controls (call after map is ready) ──
-
+    /**
+     * Builds all interactive control elements after the map has finished loading.
+     *
+     * Creates the location button, navigation button, bottom navigation bar, search
+     * overlay (search bar + category chips), and configures window inset handling.
+     *
+     * @param onLocationClick callback for when the location FAB is tapped
+     * @param onNavClick callback for when the navigation FAB is tapped
+     * @param onSettingsClick callback for when the Settings tab is selected
+     * @param onSearchSubmit callback for when a search query is submitted
+     * @param onSearchItemClick callback for when a search result item is tapped
+     */
     fun buildControls(
         onLocationClick: () -> Unit,
         onNavClick: () -> Unit,
@@ -102,12 +158,15 @@ class UIBuilder(
         setupInsets()
     }
 
-    // ── Location button ──
-
+    /**
+     * Creates and adds the "my location" floating action button to the bottom-left of the screen.
+     *
+     * @param onClick callback invoked when the button is tapped
+     */
     private fun buildLocationButton(onClick: () -> Unit) {
         myLocationButton = FloatingActionButton(activity).apply {
             setImageResource(android.R.drawable.ic_menu_mylocation)
-            backgroundTintList = ColorStateList.valueOf("#16A34A".toColorInt())
+            backgroundTintList = ColorStateList.valueOf("#657085".toColorInt())
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
@@ -121,12 +180,20 @@ class UIBuilder(
         container.addView(myLocationButton, params)
     }
 
+    /**
+     * Updates the background tint of the location FAB to indicate follow mode state.
+     *
+     * @param color hex color string (e.g., `"#2563EB"` for active, `"#657085"` for inactive)
+     */
     fun setLocationButtonColor(color: String) {
         myLocationButton.backgroundTintList = ColorStateList.valueOf(color.toColorInt())
     }
 
-    // ── Navigation button ──
-
+    /**
+     * Creates and adds the navigation floating action button to the bottom-right of the screen.
+     *
+     * @param onClick callback invoked when the button is tapped
+     */
     private fun buildNavButton(onClick: () -> Unit) {
         startNavButton = FloatingActionButton(activity).apply {
             size = FloatingActionButton.SIZE_NORMAL
@@ -145,8 +212,16 @@ class UIBuilder(
         container.addView(startNavButton, params)
     }
 
-    // ── Floor switcher ──
-
+    /**
+     * Builds and displays the floor switcher widget on the right edge of the screen.
+     *
+     * Creates a vertical column of labeled chips (e.g., "1", "2") for each building floor,
+     * sorted in descending order (highest floor on top). Tapping a chip triggers the
+     * [onFloorSwitch] callback and visually highlights the selected floor.
+     *
+     * @param floors the list of [Floor] objects to display
+     * @param onFloorSwitch callback invoked with the selected [Floor] when a chip is tapped
+     */
     fun buildFloorSwitcher(floors: List<Floor>, onFloorSwitch: (Floor) -> Unit) {
         if (::floorChipGroup.isInitialized) {
             container.removeView(floorChipGroup)
@@ -197,6 +272,14 @@ class UIBuilder(
         floors.firstOrNull()?.let { highlightFloor(it) }
     }
 
+    /**
+     * Updates the floor switcher UI to highlight the active floor chip.
+     *
+     * The active chip receives a navy blue background with white bold text; all other
+     * chips are reset to transparent backgrounds with default text styling.
+     *
+     * @param activeFloor the [Floor] currently being displayed on the map
+     */
     fun highlightFloor(activeFloor: Floor) {
         for ((id, chip) in floorChips) {
             val isActive = id == activeFloor.id
@@ -216,6 +299,12 @@ class UIBuilder(
         }
     }
 
+    /**
+     * Converts a floor name to a short label for the floor switcher (e.g., "First Floor" → "1").
+     *
+     * @param floor the [Floor] to generate a label for
+     * @return a short string label (typically a single digit)
+     */
     private fun getFloorLabel(floor: Floor): String {
         return when {
             floor.name.contains("First", ignoreCase = true) || floor.name.startsWith("1") -> "1"
@@ -225,6 +314,12 @@ class UIBuilder(
         }
     }
 
+    /**
+     * Converts a floor name to a numeric level for sorting purposes.
+     *
+     * @param floor the [Floor] to determine the level of
+     * @return an integer level (1, 2, 3, or 0 for unknown floors)
+     */
     private fun getFloorLevel(floor: Floor): Int {
         return when {
             floor.name.contains("First", ignoreCase = true) || floor.name.startsWith("1") -> 1
@@ -234,8 +329,14 @@ class UIBuilder(
         }
     }
 
-    // ── Bottom navigation ──
-
+    /**
+     * Creates and adds the bottom navigation bar with Map, Favorites, and Settings tabs.
+     *
+     * The Map tab is selected by default. The Favorites tab shows a "Coming Soon" toast.
+     * The Settings tab invokes the [onSettingsClick] callback to open [SettingsActivity].
+     *
+     * @param onSettingsClick callback invoked when the Settings tab is selected
+     */
     private fun buildBottomNav(onSettingsClick: () -> Unit) {
         bottomNav = BottomNavigationView(activity).apply {
 
@@ -272,8 +373,16 @@ class UIBuilder(
         container.addView(bottomNav, params)
     }
 
-    // ── Search overlay ──
-
+    /**
+     * Builds the search overlay containing the Material SearchBar, SearchView, and category chips.
+     *
+     * The SearchBar is the collapsed pill at the top of the screen. When tapped, it expands
+     * into a full-screen SearchView with a text input, filtered results list, and recent
+     * search history. Category chips below the search bar provide quick-filter shortcuts.
+     *
+     * @param onSearchSubmit callback invoked when the user submits a search query
+     * @param onSearchItemClick callback invoked when the user taps a search result
+     */
     private fun buildSearchOverlay(
         onSearchSubmit: (String) -> Unit,
         onSearchItemClick: (String) -> Unit
@@ -393,7 +502,14 @@ class UIBuilder(
         ).apply { gravity = Gravity.TOP })
     }
 
-    // ── Quick filter buttons ──
+    /**
+     * Builds a horizontally scrollable row of Material Design [Chip] elements for quick
+     * category filtering (Restrooms, Classrooms, Labs, Offices, Study Rooms, Food).
+     *
+     * Each chip has an icon and triggers [filterRoomsByKeyword] when tapped.
+     *
+     * @return a [HorizontalScrollView][android.widget.HorizontalScrollView] containing the chip group
+     */
     private fun buildCategoryChips(): android.widget.HorizontalScrollView {
         return android.widget.HorizontalScrollView(activity).apply {
             isHorizontalScrollBarEnabled = true
@@ -403,7 +519,6 @@ class UIBuilder(
             val chipGroup = ChipGroup(activity).apply {
                 isSingleLine = true
                 chipSpacingHorizontal = 12
-                //setPadding(24, 0, 24, 0)
             }
 
             val categories = listOf(
@@ -458,107 +573,22 @@ class UIBuilder(
         }
     }
 
+    /**
+     * Converts a dp (density-independent pixel) value to actual pixels.
+     *
+     * @return the equivalent pixel value based on the device's screen density
+     */
     private fun Float.dpToPx(): Float {
         return this * activity.resources.displayMetrics.density
     }
-    private fun buildChip(label: String, iconRes: Int): LinearLayout {
-        val chipBg = if (isDark) "#2A2A2A".toColorInt() else "#F1F3F4".toColorInt()
-        val chipText = if (isDark) "#E8EAED".toColorInt() else "#202124".toColorInt()
-        val chipStroke = if (isDark) "#5F6368".toColorInt() else "#DADCE0".toColorInt()
 
-        return LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(32, 16, 36, 20)
-            elevation = 0f
-
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 40f
-                setColor(chipBg)
-                setStroke(2, chipStroke)
-            }
-
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = 30
-            }
-
-            addView(android.widget.ImageView(activity).apply {
-                setImageResource(iconRes)
-                setColorFilter(chipText)
-                layoutParams = LinearLayout.LayoutParams(56, 56).apply {
-                    marginEnd = 10
-                }
-            })
-
-            addView(TextView(activity).apply {
-                text = label
-                textSize = 18f
-                setTextColor(chipText)
-            })
-
-            setOnClickListener {
-                filterRoomsByKeyword(label.lowercase().removeSuffix("s"))
-            }
-        }
-    }
-
-    private fun buildQuickFilterButtons(): LinearLayout {
-        val buttonBg = if (isDark) "#2A2A2A".toColorInt() else "#EEEEEE".toColorInt()
-        val buttonText = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
-
-        return LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(1)
-
-            addView(Button(activity).apply {
-                text = "Restrooms"
-                setBackgroundColor(buttonBg)
-                setTextColor(buttonText)
-                setOnClickListener { filterRoomsByKeyword("restroom") }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = 12 }
-            })
-
-            addView(Button(activity).apply {
-                text = "Offices"
-                setBackgroundColor(buttonBg)
-                setTextColor(buttonText)
-                setOnClickListener { filterRoomsByKeyword("office") }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = 12 }
-            })
-
-            addView(Button(activity).apply {
-                text = "Labs"
-                setBackgroundColor(buttonBg)
-                setTextColor(buttonText)
-                setOnClickListener { filterRoomsByKeyword("lab") }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = 12 }
-            })
-            addView(Button(activity).apply {
-                text = "Study"
-                setBackgroundColor(buttonBg)
-                setTextColor(buttonText)
-                setOnClickListener { filterRoomsByKeyword("conference") }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = 12 }
-            })
-        }
-    }
     private var activeFilter: String? = null
 
+    /**
+     * Maps category keywords to their Mappedin location category IDs.
+     *
+     * Used by [filterRoomsByKeyword] to find spaces belonging to a specific category.
+     */
     private val categoryMap = mapOf(
         "restroom" to listOf("cat_598c9293e4e54a3d", "cat_9ca8623837d4867f", "cat_fa9910b45005fb0b"),
         "office" to listOf("cat_9caae6c50fb0045f"),
@@ -568,6 +598,10 @@ class UIBuilder(
         "restaurant" to listOf("cat_cdcf20533032e7af", "cat_c42a46873f548188"),
         "computers" to listOf("cat_726989eb1bc82b34"),
     )
+
+    /**
+     * Maps category keywords to their user-friendly display names shown in the search bar.
+     */
     private val filterDisplayNames = mapOf(
         "restroom" to "Restrooms",
         "office" to "Offices",
@@ -577,6 +611,17 @@ class UIBuilder(
         "restaurant" to "Food & Drink",
         "computers" to "Computers"
     )
+
+    /**
+     * Filters and highlights spaces on the map that match a given category keyword.
+     *
+     * Fades all spaces to their default state, then queries the Mappedin location categories
+     * to find spaces matching the given keyword. Matching spaces are highlighted in orange
+     * (`#FF8200`) and their labels are re-added. The camera is animated to focus on all
+     * matching spaces. The search bar text is updated to show the active filter name.
+     *
+     * @param keyword the category keyword to filter by (e.g., "restroom", "lab", "office")
+     */
     private fun filterRoomsByKeyword(keyword: String) {
         val displayName = filterDisplayNames[keyword] ?: keyword.replaceFirstChar { it.uppercase() }
         materialSearchBar.setText(displayName)
@@ -585,7 +630,7 @@ class UIBuilder(
         materialSearchBar.setNavigationIcon(com.google.android.material.R.drawable.ic_clear_black_24)
         materialSearchBar.setNavigationOnClickListener { clearFilter() }
 
-        // Fade all spaces
+        // fade all spaces
         allSpaces.forEach { space ->
             mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
                 color = "initial",
@@ -593,10 +638,10 @@ class UIBuilder(
             ))
         }
 
-        // Get matching category IDs
+        // get matching category ids
         val categoryIds = categoryMap[keyword] ?: emptyList()
 
-        // Get all profile IDs that belong to those categories
+        // get all profile ids that belong to those categories
         mapView.mapData.getByType<com.mappedin.models.LocationCategory>(com.mappedin.models.MapDataType.LOCATION_CATEGORY) { result ->
             result.onSuccess { categories ->
                 val matchingProfileIds = categories
@@ -647,8 +692,12 @@ class UIBuilder(
             }
         }
     }
-    //private var activeFilter: String? = null
+
     private var clearFilterButton: android.widget.ImageView? = null
+
+    /**
+     * Adds a clear (X) button to the search bar to allow dismissing the active filter.
+     */
     private fun showClearFilterButton() {
         clearFilterButton?.let { materialSearchBar.removeView(it) }
 
@@ -669,7 +718,12 @@ class UIBuilder(
         })
     }
 
-
+    /**
+     * Clears the active category filter and restores all spaces to their default state.
+     *
+     * Resets all space geometries to initial colors and full opacity, restores the search
+     * bar icon and text, and re-adds all labels to the map via [MapActivity.reAddAllLabels].
+     */
     fun clearFilter() {
         if (activeFilter == null) return
         activeFilter = null
@@ -690,18 +744,30 @@ class UIBuilder(
 
         activity.reAddAllLabels()
     }
+
+    /**
+     * Returns whether a category filter is currently active.
+     *
+     * @return `true` if a filter is applied, `false` otherwise
+     */
     fun isFilterActive(): Boolean = activeFilter != null
 
-    // ── Helpers ──
-
+    /**
+     * Hides the Material SearchView if it is currently expanded.
+     */
     fun dismissSearch() {
         if (::materialSearchView.isInitialized && materialSearchView.isShowing) {
             materialSearchView.hide()
         }
     }
 
-    // ── Window insets ──
-
+    /**
+     * Configures window inset handling for edge-to-edge display.
+     *
+     * Adjusts the position of the FABs, map view, and search overlay to account for
+     * the system status bar and the bottom navigation bar height, ensuring no UI elements
+     * are hidden behind system chrome.
+     */
     private fun setupInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
             val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars())
