@@ -1,4 +1,6 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.data
+
+import android.content.Context
 
 /**
  * Manages a persistent list of recent room search queries using SharedPreferences.
@@ -7,13 +9,13 @@ package com.teamrocket.uttylermaps
  * `search_history` SharedPreferences file. New searches are added to the top of the
  * list, and duplicates are automatically removed to keep entries unique.
  *
- * Used by [UIBuilder] and [NavigationActivity] to display recent searches when the
+ * Used by [com.teamrocket.uttylermaps.ui.UIBuilder] and [com.teamrocket.uttylermaps.activities.NavigationActivity] to display recent searches when the
  * search input is focused but empty.
  *
  * @param context the Android context used to access SharedPreferences
  */
-class SearchHistory(context: android.content.Context) {
-    private val prefs = context.getSharedPreferences("search_history", android.content.Context.MODE_PRIVATE)
+class SearchHistory(context: Context) {
+    private val prefs = context.getSharedPreferences("search_history", Context.MODE_PRIVATE)
 
     /** Maximum number of recent searches to retain. */
     private val MAX_HISTORY = 15

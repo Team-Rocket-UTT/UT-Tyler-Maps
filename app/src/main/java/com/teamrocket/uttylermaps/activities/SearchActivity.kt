@@ -1,7 +1,9 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.activities
 
-import android.app.Activity
+import android.R
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -14,8 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
  *
  * Provides a text input for free-text search and quick-filter buttons for common
  * categories (Restrooms, Offices, Classrooms). The filtered results are displayed
- * in a [ListView]; tapping a result returns the selected room name to the calling
- * activity via [Activity.RESULT_OK] with a `selected_room` extra.
+ * in a [android.widget.ListView]; tapping a result returns the selected room name to the calling
+ * activity via [android.app.Activity.RESULT_OK] with a `selected_room` extra.
  *
  * This activity receives the full list of room names via the `room_names` intent extra.
  *
@@ -82,7 +84,7 @@ class SearchActivity : AppCompatActivity() {
         resultsList = ListView(this)
         adapter = ArrayAdapter(
             this,
-            android.R.layout.simple_list_item_1,
+            R.layout.simple_list_item_1,
             filteredRooms
         )
         resultsList.adapter = adapter
@@ -90,16 +92,16 @@ class SearchActivity : AppCompatActivity() {
         resultsList.setOnItemClickListener { _, _, position, _ ->
             val selectedRoom = filteredRooms[position]
             intent.putExtra("selected_room", selectedRoom)
-            setResult(Activity.RESULT_OK, intent)
+            setResult(RESULT_OK, intent)
             finish()
         }
 
-        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+        searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 filterRooms(s.toString())
             }
-            override fun afterTextChanged(s: android.text.Editable?) {}
+            override fun afterTextChanged(s: Editable?) {}
         })
 
         root.addView(searchInput)

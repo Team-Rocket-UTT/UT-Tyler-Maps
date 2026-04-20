@@ -1,4 +1,4 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.activities
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -6,20 +6,21 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
+import com.teamrocket.uttylermaps.R
 
 /**
  * Activity that hosts the application settings screen using AndroidX Preferences.
  *
  * Displays user-configurable options via [SettingsFragment], including theme selection
  * (light, dark, or system default) and a toggle for safety annotation visibility.
- * Settings changes take effect immediately for theming and are picked up by [MapActivity]
+ * Settings changes take effect immediately for theming and are picked up by [com.teamrocket.uttylermaps.MapActivity]
  * on resume for annotation visibility.
  *
  * Uses the XML layout `settings_activity` with a fragment container, and loads preferences
  * from `root_preferences.xml`.
  *
- * @see MapActivity.onResume where annotation preference changes are applied
- * @see MapActivity.onCreate where theme preference is read on startup
+ * @see com.teamrocket.uttylermaps.MapActivity.onResume where annotation preference changes are applied
+ * @see com.teamrocket.uttylermaps.MapActivity.onCreate where theme preference is read on startup
  */
 class SettingsActivity : AppCompatActivity() {
 
@@ -49,9 +50,9 @@ class SettingsActivity : AppCompatActivity() {
      *
      * Loads preferences from `root_preferences.xml` and attaches change listeners to:
      * - **Theme preference**: applies the selected night mode immediately via
-     *   [AppCompatDelegate.setDefaultNightMode]
+     *   [androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode]
      * - **Safety annotations toggle**: the preference value is persisted and read by
-     *   [MapActivity.onResume] to show or hide annotation markers on the map
+     *   [com.teamrocket.uttylermaps.MapActivity.onResume] to show or hide annotation markers on the map
      */
     class SettingsFragment : PreferenceFragmentCompat() {
 
@@ -60,7 +61,7 @@ class SettingsActivity : AppCompatActivity() {
          *
          * Sets up change listeners for the theme and annotation preferences. Theme
          * changes are applied immediately; annotation changes are deferred to the
-         * next [MapActivity.onResume] call.
+         * next [com.teamrocket.uttylermaps.MapActivity.onResume] call.
          *
          * @param savedInstanceState the previously saved instance state, if any
          * @param rootKey the key of the preference root to display, or `null` for the full hierarchy

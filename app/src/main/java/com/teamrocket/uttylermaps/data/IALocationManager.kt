@@ -1,5 +1,6 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.data
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -17,14 +18,14 @@ import com.indooratlas.android.sdk.IALocationRequest
  *
  * This activity initializes the IndoorAtlas SDK, requests the necessary runtime permissions
  * (location and Bluetooth), and logs location updates to Logcat. It is separate from the
- * main [MapActivity] and serves as a development tool to verify that IndoorAtlas is
+ * main [com.teamrocket.uttylermaps.MapActivity] and serves as a development tool to verify that IndoorAtlas is
  * returning valid floor-level positions before integrating them into the map.
  *
  * Location updates are throttled to at most once per second via [lastUpdateTime].
  *
- * Implements [IALocationListener] to receive position callbacks from the IndoorAtlas SDK.
+ * Implements [com.indooratlas.android.sdk.IALocationListener] to receive position callbacks from the IndoorAtlas SDK.
  *
- * @see MapActivity.onLocationChanged for the production location handler
+ * @see com.teamrocket.uttylermaps.MapActivity.onLocationChanged for the production location handler
  */
 class IALocationManager : AppCompatActivity(), IALocationListener {
 
@@ -140,17 +141,17 @@ class IALocationManager : AppCompatActivity(), IALocationListener {
      */
     private fun requiredPermissions(): Array<String> {
         val permissions = mutableListOf(
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
-            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
 
         return permissions.toTypedArray()
@@ -162,7 +163,7 @@ class IALocationManager : AppCompatActivity(), IALocationListener {
      * Throttles updates to once per second. Logs the latitude, longitude, floor level,
      * and accuracy of each accepted update to Logcat under the "IndoorAtlas" tag.
      *
-     * @param location the new [IALocation] from IndoorAtlas
+     * @param location the new [com.indooratlas.android.sdk.IALocation] from IndoorAtlas
      */
     override fun onLocationChanged(location: IALocation) {
         val now = System.currentTimeMillis()

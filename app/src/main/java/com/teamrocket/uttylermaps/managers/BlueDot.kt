@@ -1,4 +1,4 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.managers
 
 import android.util.Log
 import com.mappedin.MapView
@@ -16,8 +16,8 @@ import com.mappedin.models.Floor
  * [IALocationManager][com.indooratlas.android.sdk.IALocationManager].
  *
  * @property mapView the [MapView] instance on which the blue dot is rendered
- * @see MapActivity.onLocationChanged for the source of position updates
- * @see MapActivity.syncBlueDotVisibility for floor-based visibility toggling
+ * @see com.teamrocket.uttylermaps.MapActivity.onLocationChanged for the source of position updates
+ * @see com.teamrocket.uttylermaps.MapActivity.syncBlueDotVisibility for floor-based visibility toggling
  */
 class BlueDotManager(private val mapView: MapView) {
 

@@ -38,6 +38,12 @@ import com.mappedin.models.Connection
 import com.mappedin.models.Events
 import com.mappedin.models.FloorUpdateState
 import com.mappedin.models.FollowMode
+import com.teamrocket.uttylermaps.activities.NavigationActivity
+import com.teamrocket.uttylermaps.activities.SettingsActivity
+import com.teamrocket.uttylermaps.managers.BlueDotManager
+import com.teamrocket.uttylermaps.managers.FloorManager
+import com.teamrocket.uttylermaps.managers.NavigationManager
+import com.teamrocket.uttylermaps.ui.UIBuilder
 import kotlin.onSuccess
 
 
@@ -59,10 +65,10 @@ import kotlin.onSuccess
  *
  * Implements [IALocationListener] to receive indoor location updates from IndoorAtlas.
  *
- * @see FloorManager for floor switching logic
- * @see BlueDotManager for user position indicator management
- * @see NavigationManager for route calculation and turn-by-turn guidance
- * @see UIBuilder for constructing the activity's UI programmatically
+ * @see com.teamrocket.uttylermaps.managers.FloorManager for floor switching logic
+ * @see com.teamrocket.uttylermaps.managers.BlueDotManager for user position indicator management
+ * @see com.teamrocket.uttylermaps.managers.NavigationManager for route calculation and turn-by-turn guidance
+ * @see com.teamrocket.uttylermaps.ui.UIBuilder for constructing the activity's UI programmatically
  */
 class MapActivity : AppCompatActivity(), IALocationListener {
     private lateinit var mapView: MapView
@@ -96,7 +102,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
     private val annotationMarkerMap = mutableMapOf<String, com.mappedin.models.Annotation>()
 
     /**
-     * Activity result launcher for the [NavigationActivity].
+     * Activity result launcher for the [com.teamrocket.uttylermaps.activities.NavigationActivity].
      *
      * When the user selects an origin and/or destination room in the navigation screen,
      * this callback receives the result and initiates navigation. If an origin room is
@@ -276,6 +282,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
      * [onMapReady] once the map is fully loaded. Errors are logged to Logcat.
      */
     private fun loadMap() {
+
+
         val options = GetMapDataWithCredentialsOptions(
             key = BuildConfig.MAPPEDIN_KEY,
             secret = BuildConfig.MAPPEDIN_SECRET,

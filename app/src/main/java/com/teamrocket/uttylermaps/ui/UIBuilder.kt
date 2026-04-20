@@ -1,31 +1,49 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.ui
 
+import android.R
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
-import com.google.android.material.search.SearchView as MaterialSearchView
+import android.widget.Toast
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.setPadding
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.search.SearchBar
+import com.google.android.material.search.SearchView
 import com.mappedin.MapView
+import com.mappedin.models.AddLabelOptions
+import com.mappedin.models.EasingFunction
 import com.mappedin.models.Floor
+import com.mappedin.models.FocusOnOptions
+import com.mappedin.models.FocusTarget
+import com.mappedin.models.GeometryUpdateState
+import com.mappedin.models.LabelAppearance
+import com.mappedin.models.LocationCategory
+import com.mappedin.models.MapDataType
 import com.mappedin.models.Space
+import com.teamrocket.uttylermaps.MapActivity
+import com.teamrocket.uttylermaps.data.SearchHistory
+import kotlin.collections.iterator
 
 /**
- * Builds and manages all UI elements for the [MapActivity] programmatically.
+ * Builds and manages all UI elements for the [com.teamrocket.uttylermaps.MapActivity] programmatically.
  *
  * This class constructs the full view hierarchy without XML layouts, including the map container,
  * loading overlay, search bar with Material SearchView, category filter chips, floor switcher,
@@ -35,10 +53,10 @@ import com.mappedin.models.Space
  *
  * All UI elements are theme-aware, adapting colors and styling based on [isDark].
  *
- * @property activity the parent [MapActivity] for context and access to shared state
+ * @property activity the parent [com.teamrocket.uttylermaps.MapActivity] for context and access to shared state
  * @property isDark whether the app is in dark mode
- * @property mapView the [MapView] whose view is embedded in the layout
- * @see MapActivity.onMapReady where [buildControls] is called after the map loads
+ * @property mapView the [com.mappedin.MapView] whose view is embedded in the layout
+ * @see com.teamrocket.uttylermaps.MapActivity.onMapReady where [buildControls] is called after the map loads
  */
 class UIBuilder(
     private val activity: MapActivity,
@@ -49,10 +67,10 @@ class UIBuilder(
     /** Progress spinner displayed while the map is loading. */
     lateinit var loadingIndicator: ProgressBar
 
-    /** Root [FrameLayout] that contains the map view and all overlay UI elements. */
+    /** Root [android.widget.FrameLayout] that contains the map view and all overlay UI elements. */
     lateinit var container: FrameLayout
 
-    /** Floating action button that opens the [NavigationActivity]. */
+    /** Floating action button that opens the [com.teamrocket.uttylermaps.activities.NavigationActivity]. */
     lateinit var startNavButton: FloatingActionButton
 
     /** Floating action button that toggles camera follow mode on the user's location. */
@@ -71,7 +89,7 @@ class UIBuilder(
     lateinit var materialSearchBar: SearchBar
 
     /** Material Design search view (expanded full-screen overlay). */
-    lateinit var materialSearchView: MaterialSearchView
+    lateinit var materialSearchView: SearchView
 
     /** Bottom navigation bar with Map, Favorites, and Settings tabs. */
     lateinit var bottomNav: BottomNavigationView
@@ -83,7 +101,7 @@ class UIBuilder(
     var allSpaces: List<Space> = emptyList()
 
     /** Manages recent search history stored in SharedPreferences. */
-    val searchHistory by lazy{ SearchHistory(activity)}
+    val searchHistory by lazy{ SearchHistory(activity) }
 
     private lateinit var floorChipGroup: LinearLayout
     private var floorChips = mutableMapOf<String, TextView>()
@@ -165,9 +183,9 @@ class UIBuilder(
      */
     private fun buildLocationButton(onClick: () -> Unit) {
         myLocationButton = FloatingActionButton(activity).apply {
-            setImageResource(android.R.drawable.ic_menu_mylocation)
+            setImageResource(R.drawable.ic_menu_mylocation)
             backgroundTintList = ColorStateList.valueOf("#657085".toColorInt())
-            imageTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
@@ -198,9 +216,9 @@ class UIBuilder(
     private fun buildNavButton(onClick: () -> Unit) {
         startNavButton = FloatingActionButton(activity).apply {
             size = FloatingActionButton.SIZE_NORMAL
-            setImageResource(R.drawable.directions)
+            setImageResource(com.teamrocket.uttylermaps.R.drawable.directions)
             backgroundTintList = ColorStateList.valueOf("#002F6C".toColorInt())
-            imageTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
             setOnClickListener { onClick() }
         }
         val params = FrameLayout.LayoutParams(
@@ -221,8 +239,8 @@ class UIBuilder(
      * sorted in descending order (highest floor on top). Tapping a chip triggers the
      * [onFloorSwitch] callback and visually highlights the selected floor.
      *
-     * @param floors the list of [Floor] objects to display
-     * @param onFloorSwitch callback invoked with the selected [Floor] when a chip is tapped
+     * @param floors the list of [com.mappedin.models.Floor] objects to display
+     * @param onFloorSwitch callback invoked with the selected [com.mappedin.models.Floor] when a chip is tapped
      */
     fun buildFloorSwitcher(floors: List<Floor>, onFloorSwitch: (Floor) -> Unit) {
         if (::floorChipGroup.isInitialized) {
@@ -233,7 +251,7 @@ class UIBuilder(
         floorChipGroup = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             elevation = 8f
-            background = android.graphics.drawable.GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = 24f
                 setColor(if (isDark) "#2A2A2A".toColorInt() else "#FFFFFF".toColorInt())
                 setStroke(1, if (isDark) "#444444".toColorInt() else "#CCCCCC".toColorInt())
@@ -250,7 +268,7 @@ class UIBuilder(
                 gravity = Gravity.CENTER
                 setPadding(32, 24, 32, 24)
                 minWidth = 72
-                background = android.graphics.drawable.GradientDrawable().apply {
+                background = GradientDrawable().apply {
                     cornerRadius = 16f
                 }
                 setOnClickListener {
@@ -285,18 +303,18 @@ class UIBuilder(
     fun highlightFloor(activeFloor: Floor) {
         for ((id, chip) in floorChips) {
             val isActive = id == activeFloor.id
-            val bg = chip.background as android.graphics.drawable.GradientDrawable
+            val bg = chip.background as GradientDrawable
 
             if (isActive) {
                 bg.setColor("#002F6C".toColorInt())
-                chip.setTextColor(android.graphics.Color.WHITE)
-                chip.setTypeface(null, android.graphics.Typeface.BOLD)
+                chip.setTextColor(Color.WHITE)
+                chip.setTypeface(null, Typeface.BOLD)
             } else {
-                bg.setColor(android.graphics.Color.TRANSPARENT)
+                bg.setColor(Color.TRANSPARENT)
                 chip.setTextColor(
                     if (isDark) "#CCCCCC".toColorInt() else "#333333".toColorInt()
                 )
-                chip.setTypeface(null, android.graphics.Typeface.NORMAL)
+                chip.setTypeface(null, Typeface.NORMAL)
             }
         }
     }
@@ -335,29 +353,29 @@ class UIBuilder(
      * Creates and adds the bottom navigation bar with Map, Favorites, and Settings tabs.
      *
      * The Map tab is selected by default. The Favorites tab shows a "Coming Soon" toast.
-     * The Settings tab invokes the [onSettingsClick] callback to open [SettingsActivity].
+     * The Settings tab invokes the [onSettingsClick] callback to open [com.teamrocket.uttylermaps.activities.SettingsActivity].
      *
      * @param onSettingsClick callback invoked when the Settings tab is selected
      */
     private fun buildBottomNav(onSettingsClick: () -> Unit) {
         bottomNav = BottomNavigationView(activity).apply {
 
-            inflateMenu(R.menu.navigation_bar)
+            inflateMenu(com.teamrocket.uttylermaps.R.menu.navigation_bar)
 
             itemActiveIndicatorColor = ColorStateList.valueOf(
-                activity.getColor(R.color.uttblue)
+                activity.getColor(com.teamrocket.uttylermaps.R.color.uttblue)
             )
 
             minimumHeight = 0
             setPadding(0,0,0,0)
             setOnItemSelectedListener { item ->
                 when (item.itemId) {
-                    R.id.nav_map -> true
-                    R.id.nav_favorites -> {
-                        android.widget.Toast.makeText(activity, "Coming Soon!", android.widget.Toast.LENGTH_SHORT).show()
+                    com.teamrocket.uttylermaps.R.id.nav_map -> true
+                    com.teamrocket.uttylermaps.R.id.nav_favorites -> {
+                        Toast.makeText(activity, "Coming Soon!", Toast.LENGTH_SHORT).show()
                         false
                     }
-                    R.id.nav_settings -> {
+                    com.teamrocket.uttylermaps.R.id.nav_settings -> {
                         onSettingsClick()
                         false
                     }
@@ -406,7 +424,7 @@ class UIBuilder(
         }
 
         // — Search View (the expanded overlay) —
-        materialSearchView = MaterialSearchView(activity).apply {
+        materialSearchView = SearchView(activity).apply {
             setupWithSearchBar(materialSearchBar)
             hint = "Search for rooms, labs..."
 
@@ -419,7 +437,7 @@ class UIBuilder(
                 true
             }
 
-            editText.addTextChangedListener(object : android.text.TextWatcher {
+            editText.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     val q = s?.toString()?.trim()?.lowercase() ?: ""
@@ -439,12 +457,12 @@ class UIBuilder(
                     searchResults.visibility =
                         if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
                 }
-                override fun afterTextChanged(s: android.text.Editable?) {}
+                override fun afterTextChanged(s: Editable?) {}
             })
 
             addTransitionListener { _, _, newState ->
                 when (newState) {
-                    MaterialSearchView.TransitionState.SHOWN -> {
+                    SearchView.TransitionState.SHOWN -> {
                         searchOverlay.visibility = View.GONE
                         if (editText.text.isNullOrEmpty()) {
                             filteredRooms.clear()
@@ -453,10 +471,10 @@ class UIBuilder(
                             searchResults.visibility = if (filteredRooms.isEmpty()) View.GONE else View.VISIBLE
                         }
                     }
-                    MaterialSearchView.TransitionState.SHOWING -> {
+                    SearchView.TransitionState.SHOWING -> {
                         searchOverlay.visibility = View.GONE
                     }
-                    MaterialSearchView.TransitionState.HIDDEN -> {
+                    SearchView.TransitionState.HIDDEN -> {
                         searchOverlay.visibility = View.VISIBLE
                         searchResults.visibility = View.GONE
                     }
@@ -505,15 +523,15 @@ class UIBuilder(
     }
 
     /**
-     * Builds a horizontally scrollable row of Material Design [Chip] elements for quick
+     * Builds a horizontally scrollable row of Material Design [com.google.android.material.chip.Chip] elements for quick
      * category filtering (Restrooms, Classrooms, Labs, Offices, Study Rooms, Food).
      *
      * Each chip has an icon and triggers [filterRoomsByKeyword] when tapped.
      *
      * @return a [HorizontalScrollView][android.widget.HorizontalScrollView] containing the chip group
      */
-    private fun buildCategoryChips(): android.widget.HorizontalScrollView {
-        return android.widget.HorizontalScrollView(activity).apply {
+    private fun buildCategoryChips(): HorizontalScrollView {
+        return HorizontalScrollView(activity).apply {
             isHorizontalScrollBarEnabled = true
             setPadding(50, 4, 50, 4)
             clipToPadding = false
@@ -524,12 +542,12 @@ class UIBuilder(
             }
 
             val categories = listOf(
-                Triple("Restrooms", R.drawable.restroom, "restroom"),
-                Triple("Classrooms", R.drawable.classroom, "classroom"),
-                Triple("Labs", R.drawable.lab, "lab"),
-                Triple("Offices", R.drawable.office, "office"),
-                Triple("Study Rooms", R.drawable.studyroom, "conference"),
-                Triple("Food", R.drawable.restaurant, "restaurant"),
+                Triple("Restrooms", com.teamrocket.uttylermaps.R.drawable.restroom, "restroom"),
+                Triple("Classrooms", com.teamrocket.uttylermaps.R.drawable.classroom, "classroom"),
+                Triple("Labs", com.teamrocket.uttylermaps.R.drawable.lab, "lab"),
+                Triple("Offices", com.teamrocket.uttylermaps.R.drawable.office, "office"),
+                Triple("Study Rooms", com.teamrocket.uttylermaps.R.drawable.studyroom, "conference"),
+                Triple("Food", com.teamrocket.uttylermaps.R.drawable.restaurant, "restaurant"),
             )
 
             for ((label, iconRes, keyword) in categories) {
@@ -634,17 +652,18 @@ class UIBuilder(
 
         // fade all spaces
         allSpaces.forEach { space ->
-            mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+            mapView.updateState(space, GeometryUpdateState(
                 color = "initial",
                 interactive = false
-            ))
+            )
+            )
         }
 
         // get matching category ids
         val categoryIds = categoryMap[keyword] ?: emptyList()
 
         // get all profile ids that belong to those categories
-        mapView.mapData.getByType<com.mappedin.models.LocationCategory>(com.mappedin.models.MapDataType.LOCATION_CATEGORY) { result ->
+        mapView.mapData.getByType<LocationCategory>(MapDataType.LOCATION_CATEGORY) { result ->
             result.onSuccess { categories ->
                 val matchingProfileIds = categories
                     .filter { it.id in categoryIds }
@@ -658,11 +677,12 @@ class UIBuilder(
 
                 activity.runOnUiThread {
                     matchingSpaces.forEach { space ->
-                        mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+                        mapView.updateState(space, GeometryUpdateState(
                             color = "#FF8200",
                             opacity = 0.6,
                             interactive = true
-                        ))
+                        )
+                        )
                     }
 
                     mapView.labels.removeAll()
@@ -671,8 +691,8 @@ class UIBuilder(
                         mapView.labels.add(
                             target = space,
                             text = space.name,
-                            options = com.mappedin.models.AddLabelOptions(
-                                labelAppearance = com.mappedin.models.LabelAppearance(),
+                            options = AddLabelOptions(
+                                labelAppearance = LabelAppearance(),
                                 interactive = true
                             )
                         )
@@ -680,13 +700,13 @@ class UIBuilder(
 
                     if (matchingSpaces.isNotEmpty()) {
                         val targets = matchingSpaces.map {
-                            com.mappedin.models.FocusTarget.SpaceTarget(it)
+                            FocusTarget.SpaceTarget(it)
                         }
                         mapView.camera.focusOn(
                             targets,
-                            com.mappedin.models.FocusOnOptions(
+                            FocusOnOptions(
                                 animationDuration = 3000,
-                                easing = com.mappedin.models.EasingFunction.EASE_IN_OUT
+                                easing = EasingFunction.EASE_IN_OUT
                             )
                         )
                     }
@@ -695,7 +715,7 @@ class UIBuilder(
         }
     }
 
-    private var clearFilterButton: android.widget.ImageView? = null
+    private var clearFilterButton: ImageView? = null
 
     /**
      * Adds a clear (X) button to the search bar to allow dismissing the active filter.
@@ -703,8 +723,8 @@ class UIBuilder(
     private fun showClearFilterButton() {
         clearFilterButton?.let { materialSearchBar.removeView(it) }
 
-        clearFilterButton = android.widget.ImageView(activity).apply {
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+        clearFilterButton = ImageView(activity).apply {
+            setImageResource(R.drawable.ic_menu_close_clear_cancel)
             setColorFilter(if (isDark) "#9AA0A6".toColorInt() else "#5F6368".toColorInt())
             setPadding(16, 16, 16, 16)
             setOnClickListener { clearFilter() }
@@ -737,11 +757,12 @@ class UIBuilder(
 
         // Restore all spaces
         allSpaces.forEach { space ->
-            mapView.updateState(space, com.mappedin.models.GeometryUpdateState(
+            mapView.updateState(space, GeometryUpdateState(
                 color = "initial",
                 opacity = 1.0,
                 interactive = true
-            ))
+            )
+            )
         }
 
         activity.reAddAllLabels()

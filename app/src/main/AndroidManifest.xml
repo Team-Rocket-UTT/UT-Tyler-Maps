@@ -32,7 +32,7 @@
             android:value="+wF5S/Afjl1P+dI3b7LA+FIBB1hRAZ9Y618shSjqkEiZ6i8oP1W2yJZMoaUAmKPlSTFXW/0ZNR+SXszCTY+TOAhLLzgkuRI5injAJAjxH830mXXG/5nP1DSvez91aQ==" />
 
         <activity
-            android:name=".SettingsActivity"
+            android:name=".activities.SettingsActivity"
             android:exported="false"
             android:label="@string/title_activity_settings"
             android:theme="@style/Theme.UTTylerMaps"
@@ -50,8 +50,8 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".SearchActivity" />
-        <activity android:name=".NavigationActivity" />
+        <activity android:name=".activities.SearchActivity" />
+        <activity android:name=".activities.NavigationActivity" />
 
     </application>
 

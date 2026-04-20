@@ -1,17 +1,30 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.activities
 
-import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.toColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.teamrocket.uttylermaps.R
+import com.teamrocket.uttylermaps.data.SearchHistory
 
 /**
  * Activity for selecting origin and destination rooms before starting navigation.
@@ -22,9 +35,9 @@ import androidx.core.graphics.toColorInt
  * IndoorAtlas position), but can be changed to a specific room for space-to-space routing.
  *
  * Recent search history is displayed when inputs are focused but empty. Results are returned
- * to [MapActivity] via [Activity.RESULT_OK] with `origin_room` and `dest_room` extras.
+ * to [com.teamrocket.uttylermaps.MapActivity] via [android.app.Activity.RESULT_OK] with `origin_room` and `dest_room` extras.
  *
- * @see MapActivity.navLauncher which launches this activity and processes the result
+ * @see com.teamrocket.uttylermaps.MapActivity.navLauncher which launches this activity and processes the result
  * @see SearchHistory for recent search persistence
  */
 class NavigationActivity : AppCompatActivity() {
@@ -45,7 +58,7 @@ class NavigationActivity : AppCompatActivity() {
     private lateinit var searchHistory: SearchHistory
 
     private val filteredNames = mutableListOf<String>()
-    private lateinit var adapter: android.widget.BaseAdapter
+    private lateinit var adapter: BaseAdapter
     private var roomNames: List<String> = emptyList()
     /** Guard flag to prevent the text watcher from firing during a programmatic swap. */
     private var isSwapping = false
@@ -64,13 +77,13 @@ class NavigationActivity : AppCompatActivity() {
 
         isDark =
             (resources.configuration.uiMode and
-                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
 
         roomNames = intent.getStringArrayListExtra("room_names") ?: emptyList()
         val prefillDest = intent.getStringExtra("prefill_dest")
 
-        adapter = object : android.widget.BaseAdapter() {
+        adapter = object : BaseAdapter() {
             override fun getCount() = filteredNames.size
             override fun getItem(position: Int) = filteredNames[position]
             override fun getItemId(position: Int) = position.toLong()
@@ -87,7 +100,7 @@ class NavigationActivity : AppCompatActivity() {
                     setPadding(36, 28, 36, 28)
 
                     if (isHistory) {
-                        addView(android.widget.ImageView(this@NavigationActivity).apply {
+                        addView(ImageView(this@NavigationActivity).apply {
                             setImageResource(R.drawable.history)
                             setColorFilter(iconColor)
                             layoutParams = LinearLayout.LayoutParams(48, 48).apply {
@@ -96,7 +109,7 @@ class NavigationActivity : AppCompatActivity() {
                         })
                     }
 
-                    addView(android.widget.TextView(this@NavigationActivity).apply {
+                    addView(TextView(this@NavigationActivity).apply {
                         text = name
                         textSize = 16f
                         setTextColor(textColor)
@@ -139,8 +152,8 @@ class NavigationActivity : AppCompatActivity() {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(bgColor)
         root.setPadding(24, 16, 24, 24)
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val statusBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             view.setPadding(24, statusBars.top + 12, 24, 24)
             insets
         }
@@ -153,7 +166,7 @@ class NavigationActivity : AppCompatActivity() {
             text = "←"
             textSize = 28f
             setTextColor(textColor)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(12, 12, 12, 12)
             setOnClickListener { finish() }
         }
@@ -183,7 +196,7 @@ class NavigationActivity : AppCompatActivity() {
             setTextColor(inputText)
             setHintTextColor(inputHint)
             isSingleLine = true
-            background = android.graphics.drawable.GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = 26f
                 setColor(inputBg)
             }
@@ -224,7 +237,7 @@ class NavigationActivity : AppCompatActivity() {
             setTextColor(inputText)
             setHintTextColor(inputHint)
             isSingleLine = true
-            background = android.graphics.drawable.GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = 26f
                 setColor(inputBg)
             }
@@ -255,7 +268,7 @@ class NavigationActivity : AppCompatActivity() {
             text = "⇅"
             textSize = 26f
             setTextColor(textColor)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(16, 16, 16, 16)
             setOnClickListener { swapFields() }
         }
@@ -292,9 +305,9 @@ class NavigationActivity : AppCompatActivity() {
             text = "Start Navigation"
             isAllCaps = false
             textSize = 17f
-            setTextColor(android.graphics.Color.WHITE)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            background = GradientDrawable().apply {
                 cornerRadius = 28f
                 setColor("#2563EB".toColorInt())
             }
@@ -304,14 +317,14 @@ class NavigationActivity : AppCompatActivity() {
             setOnClickListener {
                 if (selectedDest == null) return@setOnClickListener
                 if (selectedOrigin == selectedDest) {
-                    android.widget.Toast.makeText(this@NavigationActivity, "Cannot find route between the same rooms", android.widget.Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@NavigationActivity, "Cannot find route between the same rooms", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 val result = Intent().apply {
                     putExtra("origin_room", selectedOrigin)
                     putExtra("dest_room", selectedDest)
                 }
-                setResult(Activity.RESULT_OK, result)
+                setResult(RESULT_OK, result)
                 finish()
             }
         }
@@ -344,9 +357,9 @@ class NavigationActivity : AppCompatActivity() {
 
 
 
-        val watcher = object : android.text.TextWatcher {
+        val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {}
+            override fun afterTextChanged(s: Editable?) {}
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 if (isSwapping) return

@@ -1,4 +1,4 @@
-package com.teamrocket.uttylermaps
+package com.teamrocket.uttylermaps.managers
 
 import android.util.Log
 import com.mappedin.MapView
@@ -13,8 +13,8 @@ import com.mappedin.models.Floor
  * the displayed floor changes, allowing other components (such as the blue dot) to react.
  *
  * @property mapView the [MapView] instance used to issue floor-switch commands
- * @see MapActivity.onMapReady where floors are loaded and the floor switcher UI is built
- * @see MapActivity.syncBlueDotVisibility which reacts to floor changes
+ * @see com.teamrocket.uttylermaps.MapActivity.onMapReady where floors are loaded and the floor switcher UI is built
+ * @see com.teamrocket.uttylermaps.MapActivity.syncBlueDotVisibility which reacts to floor changes
  */
 class FloorManager(private val mapView: MapView) {
 
@@ -32,7 +32,7 @@ class FloorManager(private val mapView: MapView) {
     /**
      * Optional callback invoked whenever the displayed floor changes via [switchToFloor].
      *
-     * Receives the new [Floor] as its parameter. Used by [MapActivity] to toggle blue dot
+     * Receives the new [Floor] as its parameter. Used by [com.teamrocket.uttylermaps.MapActivity] to toggle blue dot
      * visibility based on whether the user's actual floor matches the displayed floor.
      */
     var onFloorChanged: ((Floor) -> Unit)? = null
@@ -59,7 +59,7 @@ class FloorManager(private val mapView: MapView) {
      *
      * Updates [currentFloor] and calls [MapView.setFloor] to render the new floor.
      * Logs the result to Logcat on success or failure. Note that the [onFloorChanged]
-     * callback is triggered separately by the [MapActivity] when it detects a floor change.
+     * callback is triggered separately by the [com.teamrocket.uttylermaps.MapActivity] when it detects a floor change.
      *
      * @param floor the [Floor] to switch the map display to
      */
