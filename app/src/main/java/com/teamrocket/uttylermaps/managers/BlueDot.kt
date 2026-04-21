@@ -33,7 +33,10 @@ class BlueDotManager(private val mapView: MapView) {
      *
      * Logs the result to Logcat on success or failure.
      */
+    private var isEnabled = false
     fun enable() {
+        if (isEnabled) return   // don't reinitialize
+        isEnabled = true
         val options = BlueDotOptions(
             accuracyRing = BlueDotOptions.AccuracyRing(color = "#2266ff", opacity = 0.25),
             color = "#002F6C",
@@ -53,6 +56,10 @@ class BlueDotManager(private val mapView: MapView) {
                 }
             )
         }
+    }
+    fun disable() {
+        isEnabled = false
+        mapView.blueDot.disable()
     }
 
     /**

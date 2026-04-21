@@ -27,6 +27,7 @@ import android.content.pm.PackageManager
 import android.view.View
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.WindowCompat
+import com.teamrocket.uttylermaps.BuildConfig
 import com.mappedin.models.Coordinate
 import com.indooratlas.android.sdk.IALocation
 import com.indooratlas.android.sdk.IALocationListener
@@ -332,7 +333,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         floorManager = FloorManager(mapView)
         blueDotManager = BlueDotManager(mapView)
         navigationManager = NavigationManager(this, mapView, ui.container, isDark)
-        mapReady = true
+
 
         floorManager.onFloorChanged = { displayedFloor ->
             val userFloor = blueDotFloorId
@@ -436,6 +437,8 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
         }
+        mapReady = true //flag map as ready after all floors are loaded
+
         //enable the blue dot after all map loads
         blueDotManager.enable()
 
@@ -621,29 +624,6 @@ class MapActivity : AppCompatActivity(), IALocationListener {
                 }
             }
         }
-    }
-
-    /**
-     * Places the blue dot at a hardcoded latitude/longitude for testing purposes.
-     *
-     * Updates the [BlueDotManager] position and stores a synthetic [IALocation] in
-     * [lastLocation] so that navigation and follow-mode features work without a real
-     * IndoorAtlas signal.
-     *
-     * @param lat the latitude to place the blue dot at
-     * @param lon the longitude to place the blue dot at
-     * @param floor the [Floor] to associate with the fake location; defaults to [FloorManager.currentFloor]
-     */
-    private fun setFakeLocation(lat: Double, lon: Double, floor: Floor? = null) {
-        val targetFloor = floor ?: floorManager.currentFloor ?: return
-        blueDotFloorId = targetFloor.id  // track it here too
-
-        blueDotManager.updatePosition(lat, lon, 3.0, targetFloor)
-        lastLocation = IALocation.from(android.location.Location("fake").apply {
-            latitude = lat
-            longitude = lon
-            accuracy = 3.0f
-        })
     }
 
     /**
@@ -941,10 +921,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
 
         val mappedFloor = floorManager.findFloorForLevel(location.floorLevel) ?: return
         blueDotFloorId = mappedFloor.id  // track actual user floor
-        if (mappedFloor == null) {
-            Log.w("BlueDot", "No Mappedin floor found for IA floorLevel=${location.floorLevel}")
-            return
-        }
+
 
         Log.d(
             "BlueDot",
@@ -988,7 +965,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         val displayedFloor = floorManager.currentFloor?.id ?: return
 
         if (userFloor != displayedFloor) {
-            mapView.blueDot.disable()
+            blueDotManager.disable()
         } else {
             blueDotManager.enable()
             val loc = lastLocation
