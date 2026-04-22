@@ -80,19 +80,19 @@ class FloorManager(private val mapView: MapView) {
     /**
      * Maps an IndoorAtlas floor level number to the corresponding Mappedin [Floor] object.
      *
-     * IndoorAtlas uses integer floor levels where 0 represents the ground floor and 1
+     * IndoorAtlas uses integer floor levels where 1 represents the ground floor and 2
      * represents the second floor. This method translates those levels to the Mappedin
      * floor names used in the UT Tyler building map.
      *
-     * @param floorLevel the IndoorAtlas floor level (0 = ground/first floor, 1 = second floor)
+     * @param floorLevel the IndoorAtlas floor level (1 = ground/first floor, 2 = second floor)
      * @return the matching [Floor] object, or `null` if no match is found for the given level
      */
     fun findFloorForLevel(floorLevel: Int): Floor? {
         //maps indoor atlas floor level number to mappedin floor
         //indoor atlas: 0 = ground floor, 1 = second
         val floorName = when (floorLevel) {
-            0 -> "First Floor"
-            1 -> "Second Floor"
+            1 -> "First Floor"
+            2 -> "Second Floor"
             else -> return null
         }
 

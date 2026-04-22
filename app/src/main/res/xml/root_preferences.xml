@@ -46,6 +46,12 @@
             app:defaultValue="true"
             app:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            app:key="show_instruction_markers"
+            app:title="Show instruction Markers"
+            app:summary="Display turn-by-turn markers on the navigation path"
+            app:defaultValue="true" />
+
     </PreferenceCategory>
 
 </PreferenceScreen>

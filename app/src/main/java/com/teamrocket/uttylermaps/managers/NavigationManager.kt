@@ -1233,6 +1233,9 @@ class NavigationManager(
      * @param destinationName the display name of the destination for the arrival marker
      */
     private fun addInstructionMarkers(directions: Directions, destinationName: String) {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(activity)
+        if(!prefs.getBoolean("show_instruction_markers", true)) return
+
         val instructions = directions.instructions
 
         for (i in instructions.indices) {
