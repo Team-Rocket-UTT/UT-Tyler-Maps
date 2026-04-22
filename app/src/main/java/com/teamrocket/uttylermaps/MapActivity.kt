@@ -443,7 +443,9 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         blueDotManager.enable()
 
         // listen for space taps
-        mapView.on(Events.Click) { payload -> handleMapClick(payload) }
+        mapView.on(Events.Click) {payload ->
+            if(navigationManager.isNavigating) return@on
+            handleMapClick(payload) }
 
         //to track tapping away
         mapView.view.setOnTouchListener { v, event ->
@@ -733,6 +735,7 @@ class MapActivity : AppCompatActivity(), IALocationListener {
      * with the correct styling and visibility.
      */
     fun reAddAllLabels() {
+        if (!prefs.getBoolean("show_room_labels", true)) return
         mapView.labels.removeAll()
         addLabelsToSpaces(allSpaces)
         addConnectionLabels()
@@ -845,6 +848,12 @@ class MapActivity : AppCompatActivity(), IALocationListener {
         }
         if (mapReady) {
             loadAnnotations()
+        }
+        // Handle room labels toggle
+        if (prefs.getBoolean("show_room_labels", true)) {
+            reAddAllLabels()
+        } else {
+            mapView.labels.removeAll()
         }
     }
 

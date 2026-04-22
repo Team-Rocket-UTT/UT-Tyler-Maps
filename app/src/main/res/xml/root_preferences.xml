@@ -26,11 +26,46 @@
             app:defaultValue="false"
             app:iconSpaceReserved="false" />
 
+        <ListPreference
+
+            app:key="distance_unit"
+            app:title="Distance Unit"
+            app:entries="@array/distance_unit_entries"
+            app:entryValues="@array/distance_unit_values"
+            app:useSimpleSummaryProvider="true"
+            app:defaultValue="metric"
+            app:iconSpaceReserved="false" />
+        <!-- walkspeed estimate-->
+        <ListPreference
+            app:key="walking_speed"
+            app:title="Walking speed"
+            app:entries="@array/walking_speed_entries"
+            app:entryValues="@array/walking_speed_values"
+            app:useSimpleSummaryProvider="true"
+            app:defaultValue="normal"
+            app:iconSpaceReserved="false" />
+
+
+
     </PreferenceCategory>
 
     <PreferenceCategory
         app:title="Map"
         app:iconSpaceReserved="false">
+
+        <SwitchPreferenceCompat
+            app:key="show_room_labels"
+            app:title="Show room labels"
+            app:summary="Display names on rooms"
+            app:defaultValue="true"
+            app:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
+            app:key="show_instruction_markers"
+            app:title="Show instruction markers"
+            app:summary="Display turn-by-turn markers on the navigation path"
+            app:defaultValue="true"
+            app:iconSpaceReserved="false" />
 
         <SwitchPreferenceCompat
             app:key="auto_floor_switch"
@@ -46,11 +81,39 @@
             app:defaultValue="true"
             app:iconSpaceReserved="false" />
 
-        <SwitchPreferenceCompat
-            app:key="show_instruction_markers"
-            app:title="Show instruction Markers"
-            app:summary="Display turn-by-turn markers on the navigation path"
-            app:defaultValue="true" />
+
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:title="About"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            app:key="app_version"
+            app:title="Version"
+            app:summary="1.0"
+            app:selectable="false"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            app:key="team_name"
+            app:title="Developed by"
+            app:summary="Team Rocket"
+            app:selectable="false"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            app:key="university"
+            app:summary="This application was completed for the UT Tyler CS/IT/IS Capstone Project Spring 2026. This application is not officially affiliated with, sponsored by, or endorsed by The University of Texas at Tyler. "
+            app:selectable="false"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            app:key="team_logo"
+            app:layout="@layout/preference_team_layout"
+            app:selectable="false"
+            app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
 

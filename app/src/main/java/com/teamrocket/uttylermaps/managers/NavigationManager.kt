@@ -975,8 +975,18 @@ class NavigationManager(
     private fun showNavigationPanel(destination: Space, directions: Directions) {
         dismissNavigationPanel()
 
-        val distanceText = if (directions.distance < 1000) "${directions.distance.toInt()}m"
-        else "${"%.1f".format(directions.distance / 1000)}km"
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(activity)
+
+        val distanceText = formatDistance(directions.distance)
+
+        val speedMs = when (prefs.getString("walking_speed", "normal")) {
+            "slow" -> 0.9
+            "fast" -> 1.8
+            else -> 1.4  // normal
+        }
+        val walkSeconds = (directions.distance / speedMs).toInt()
+        val timeText = if (walkSeconds < 60) "${(walkSeconds-10)}-${(walkSeconds+10)} sec"
+        else "${walkSeconds / 60} min"
 
         navigationPanel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -997,7 +1007,7 @@ class NavigationManager(
 
             // Distance
             addView(TextView(activity).apply {
-                text = distanceText
+                text = "$distanceText · $timeText walk"
                 setTextColor(if (isDark) "#AAAAAA".toColorInt() else "#666666".toColorInt())
                 textSize = 14f
                 layoutParams = LinearLayout.LayoutParams(
@@ -1106,6 +1116,19 @@ class NavigationManager(
             bottomMargin = 180
         }
         container.addView(navigationPanel, params)
+    }
+
+    private fun formatDistance(meters: Double): String {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(activity)
+        val unit = prefs.getString("distance_unit", "metric")
+
+
+        return if(unit == "imperial"){
+            val feet = (meters *3.2084).toInt()
+            "$feet ft"
+        }else{
+            "${meters.toInt()} m"
+        }
     }
 
     /**
